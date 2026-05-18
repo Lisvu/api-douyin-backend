@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Douyin Lite - Video Recommendation System</title>
+  <!-- Modern Google Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Standard Custom Styling -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="dark-theme">
+
+  <!-- ====================================================
+       AUTHENTICATION OVERLAY CARD (Glassmorphism)
+       ==================================================== -->
+  <div id="auth-overlay" class="auth-overlay active">
+    <div class="auth-card glow-border">
+      <div class="auth-brand">
+        <div class="logo-glow">
+          <i class="fa-brands fa-tiktok logo-icon"></i>
+        </div>
+        <h2>抖音简易推荐系统</h2>
+        <p>Short Video Stream Recommendation System</p>
+      </div>
+
+      <!-- Tab Switchers -->
+      <div class="auth-tabs">
+        <button id="tab-login" class="auth-tab-btn active" onclick="switchAuthTab('login')">登录</button>
+        <button id="tab-register" class="auth-tab-btn" onclick="switchAuthTab('register')">注册</button>
+      </div>
+
+      <!-- Login Form -->
+      <form id="login-form" class="auth-form active" onsubmit="handleAuth(event, 'login')">
+        <div class="input-group">
+          <label for="login-username"><i class="fa-solid fa-user"></i> 用户名</label>
+          <input type="text" id="login-username" placeholder="请输入用户名" required autocomplete="username">
+        </div>
+        <div class="input-group">
+          <label for="login-password"><i class="fa-solid fa-lock"></i> 密码</label>
+          <input type="password" id="login-password" placeholder="请输入密码" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block glow-btn">
+          <span>登录系统</span> <i class="fa-solid fa-right-to-bracket"></i>
+        </button>
+        <div class="demo-account">
+          <p><i class="fa-solid fa-info-circle"></i> 演示账户: <strong>douyin_creator</strong> / <strong>password123</strong></p>
+        </div>
+      </form>
+
+      <!-- Register Form -->
+      <form id="register-form" class="auth-form" onsubmit="handleAuth(event, 'register')">
+        <div class="input-group">
+          <label for="register-username"><i class="fa-solid fa-user-plus"></i> 用户名</label>
+          <input type="text" id="register-username" placeholder="字母或数字组合" required autocomplete="username">
+        </div>
+        <div class="input-group">
+          <label for="register-password"><i class="fa-solid fa-lock"></i> 密码</label>
+          <input type="password" id="register-password" placeholder="最少6位密码" required autocomplete="new-password">
+        </div>
+        <button type="submit" class="btn btn-accent btn-block glow-btn-accent">
+          <span>注册账户</span> <i class="fa-solid fa-user-check"></i>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ====================================================
+       MAIN APPLICATION LAYOUT
+       ==================================================== -->
+  <div class="app-container">
+    
+    <!-- LEFT SIDEBAR NAVIGATION (Douyin Premium Vibe) -->
+    <aside class="app-sidebar">
+      <div class="sidebar-logo">
+        <i class="fa-brands fa-tiktok brand-logo-icon"></i>
+        <span class="brand-title">抖音推荐版</span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button id="nav-recommend" class="nav-item active" onclick="switchSection('recommend')">
+          <i class="fa-solid fa-compass"></i>
+          <span>视频推荐</span>
+        </button>
+        <button id="nav-my-videos" class="nav-item" onclick="switchSection('my-videos')">
+          <i class="fa-solid fa-video"></i>
+          <span>我的视频</span>
+        </button>
+        <button id="nav-monitor" class="nav-item" onclick="switchSection('monitor')">
+          <i class="fa-solid fa-chart-line"></i>
+          <span>系统监控</span>
+          <span class="pulse-dot"></span>
+        </button>
+      </nav>
+
+      <!-- Sidebar User Panel -->
+      <div class="sidebar-user-footer">
+        <div class="user-avatar-placeholder">
+          <i class="fa-solid fa-circle-user"></i>
+        </div>
+        <div class="user-meta">
+          <span id="display-username" class="username-text">Not Logged In</span>
+          <span class="role-badge">Creator</span>
+        </div>
+        <div class="user-actions-dropdown">
+          <button class="user-settings-btn" title="Settings Menu" onclick="toggleSettingsMenu()">
+            <i class="fa-solid fa-ellipsis-vertical"></i>
+          </button>
+          <div id="settings-menu" class="settings-dropdown-content">
+            <button onclick="handleLogout()"><i class="fa-solid fa-right-from-bracket"></i> 退出登录</button>
+            <button onclick="confirmAccountDeletion()" class="btn-danger-text"><i class="fa-solid fa-user-slash"></i> 注销账号</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- RIGHT CONTENT AREA -->
+    <main class="app-content">
+      
+      <!-- HEADER BAR -->
+      <header class="content-header">
+        <div class="header-left">
+          <h1 id="page-title">视频流推荐</h1>
+          <p id="page-desc" class="subtitle">为您精心挑选点赞最高的高清短视频</p>
+        </div>
+        <div class="header-right">
+          <button class="btn btn-primary upload-trigger-btn" onclick="openUploadModal()">
+            <i class="fa-solid fa-plus"></i> <span>发布新视频</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- 1. RECOMMEND VIDEOS SECTION (Feed Player) -->
+      <section id="section-recommend" class="content-section active">
+        <div class="recommend-player-wrapper">
+          
+          <!-- Outer Carousel Box supporting keyboard, arrow keys and scroll -->
+          <div id="feed-player-container" class="feed-player-container">
+            <!-- Dynamic Video Cards will be injected here -->
+            <div class="empty-state-loader">
+              <div class="spinner"></div>
+              <p>加载推荐视频中...</p>
+            </div>
+          </div>
+
+          <!-- Vertical Sliding Assist Controls -->
+          <div class="slide-navigation">
+            <button class="slide-nav-btn" onclick="slidePrevious()" title="上一个视频 (Arrow Up)">
+              <i class="fa-solid fa-chevron-up"></i>
+            </button>
+            <button class="slide-nav-btn" onclick="slideNext()" title="下一个视频 (Arrow Down)">
+              <i class="fa-solid fa-chevron-down"></i>
+            </button>
+          </div>
+
+          <!-- Key Tips Overlay -->
+          <div class="keyboard-tips">
+            <span><i class="fa-solid fa-keyboard"></i> 键盘 <b>↑</b> 和 <b>↓</b> 可上下切换视频</span>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- 2. MY VIDEOS MANAGEMENT SECTION -->
+      <section id="section-my-videos" class="content-section">
+        <div class="my-videos-header">
+          <div class="video-stats-summary">
+            <div class="stat-card">
+              <i class="fa-solid fa-video icon-cyan"></i>
+              <div class="stat-info">
+                <span id="my-video-count" class="stat-num">0</span>
+                <span class="stat-label">已发布视频</span>
+              </div>
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="openUploadModal()">
+            <i class="fa-solid fa-cloud-arrow-up"></i> 上传发布视频
+          </button>
+        </div>
+
+        <!-- Video Grid list -->
+        <div id="my-videos-grid" class="my-videos-grid">
+          <!-- Dynamic grid content -->
+          <div class="no-videos-state">
+            <i class="fa-solid fa-video-slash"></i>
+            <h3>您还没有发布任何视频</h3>
+            <p>发布你的第一个短视频，让全世界的用户看到它吧！</p>
+            <button class="btn btn-outline" onclick="openUploadModal()">立即发布</button>
+          </div>
+        </div>
+
+        <!-- Pagination Controls -->
+        <div id="my-videos-pagination" class="pagination-container hidden">
+          <button id="btn-prev-page" class="pag-btn" onclick="changeMyVideosPage(-1)" disabled>
+            <i class="fa-solid fa-arrow-left"></i> 上一页
+          </button>
+          <span id="pagination-info" class="pagination-info">第 1 / 1 页 (共 0 个视频)</span>
+          <button id="btn-next-page" class="pag-btn" onclick="changeMyVideosPage(1)" disabled>
+            下一页 <i class="fa-solid fa-arrow-right"></i>
+          </button>
+        </div>
+      </section>
+
+      <!-- 3. REAL-TIME SYSTEM MONITOR & LOGS SECTION -->
+      <section id="section-monitor" class="content-section">
+        <!-- Live Dashboard Metrics -->
+        <div class="dashboard-grid">
+          <div class="metric-card glow-card-cyan">
+            <div class="metric-head">
+              <span>系统总用户</span>
+              <i class="fa-solid fa-users text-cyan"></i>
+            </div>
+            <div id="metric-users" class="metric-val">0</div>
+            <p class="metric-desc">SQLite db registered profiles</p>
+          </div>
+          <div class="metric-card glow-card-magenta">
+            <div class="metric-head">
+              <span>资源库视频数</span>
+              <i class="fa-solid fa-film text-magenta"></i>
+            </div>
+            <div id="metric-videos" class="metric-val">0</div>
+            <p class="metric-desc">Total MP4 stored video assets</p>
+          </div>
+          <div class="metric-card">
+            <div class="metric-head">
+              <span>全网总点赞</span>
+              <i class="fa-solid fa-heart text-red"></i>
+            </div>
+            <div id="metric-likes" class="metric-val">0</div>
+            <p class="metric-desc">Aggregated engagement counts</p>
+          </div>
+          <div class="metric-card">
+            <div class="metric-head">
+              <span>接口平均耗时</span>
+              <i class="fa-solid fa-stopwatch text-yellow"></i>
+            </div>
+            <div id="metric-latency" class="metric-val">0.00 ms</div>
+            <p class="metric-desc">Express API response duration</p>
+          </div>
+        </div>
+
+        <!-- Request / Response Logs Table -->
+        <div class="logs-container">
+          <div class="logs-header">
+            <h3><i class="fa-solid fa-receipt"></i> 接口访问实时监控日志 (自动刷新)</h3>
+            <div class="logs-actions">
+              <span class="refresh-indicator"><span class="pulsing-green-dot"></span> Live Log Monitoring</span>
+              <button class="btn btn-outline btn-sm" onclick="fetchSystemStatsAndLogs()"><i class="fa-solid fa-rotate"></i> 刷新</button>
+            </div>
+          </div>
+          
+          <div class="table-wrapper">
+            <table class="logs-table">
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>请求方式</th>
+                  <th>API路径</th>
+                  <th>操作账号</th>
+                  <th>接口耗时</th>
+                  <th>状态</th>
+                  <th>具体输入 / 输出信息 (JSON)</th>
+                </tr>
+              </thead>
+              <tbody id="logs-table-body">
+                <tr>
+                  <td colspan="7" class="text-center text-muted">暂无请求日志数据</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ====================================================
+       PUBLISH VIDEO MODAL WINDOW (Glassmorphic popup)
+       ==================================================== -->
+  <div id="upload-modal" class="modal-overlay">
+    <div class="modal-card glow-border">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-cloud-arrow-up text-cyan"></i> 发布全新短视频</h3>
+        <button class="modal-close-btn" onclick="closeUploadModal()">&times;</button>
+      </div>
+      
+      <form id="upload-video-form" onsubmit="handlePublishVideo(event)">
+        <div class="modal-body">
+          <div class="input-group">
+            <label for="upload-title"><i class="fa-solid fa-heading"></i> 视频标题 <span class="required">*</span></label>
+            <input type="text" id="upload-title" placeholder="给视频写个有吸引力的标题吧" required>
+          </div>
+
+          <div class="input-group">
+            <label for="upload-desc"><i class="fa-solid fa-quote-left"></i> 视频介绍/话题</label>
+            <textarea id="upload-desc" rows="3" placeholder="添加视频的描述，可以使用 #话题 标签哦"></textarea>
+          </div>
+
+          <!-- Video File Upload Area -->
+          <div class="input-group">
+            <label><i class="fa-solid fa-file-video"></i> 选择视频文件 <span class="required">*</span></label>
+            <div class="upload-dropzone" onclick="document.getElementById('upload-video-file').click()" id="video-dropzone">
+              <i class="fa-solid fa-film dropzone-icon"></i>
+              <p class="dropzone-text">点击选择 或 拖拽 MP4 格式视频文件到这里</p>
+              <p class="dropzone-sub">支持 .mp4, .webm 等格式 (最大支持 100MB)</p>
+              <span id="selected-video-filename" class="selected-filename hidden"></span>
+              <input type="file" id="upload-video-file" accept="video/mp4,video/webm" style="display:none" onchange="handleFileSelected(event, 'video')">
+            </div>
+          </div>
+
+          <!-- Cover Image Upload Area (Optional) -->
+          <div class="input-group">
+            <label><i class="fa-solid fa-image"></i> 视频封面图 (选填)</label>
+            <div class="upload-dropzone minified" onclick="document.getElementById('upload-cover-file').click()" id="cover-dropzone">
+              <i class="fa-solid fa-image dropzone-icon-sm"></i>
+              <p class="dropzone-text">点击上传封面图片文件 (不选则由系统自动生成彩色渐变封面)</p>
+              <span id="selected-cover-filename" class="selected-filename hidden"></span>
+              <input type="file" id="upload-cover-file" accept="image/*" style="display:none" onchange="handleFileSelected(event, 'cover')">
+            </div>
+          </div>
+
+          <!-- Upload Progress Loader -->
+          <div id="upload-progress-container" class="upload-progress-container hidden">
+            <div class="progress-bar-wrapper">
+              <div id="upload-progress-bar" class="progress-bar-fill"></div>
+            </div>
+            <div class="progress-text">
+              <span id="upload-status-text">正在上传视频资源...</span>
+              <span id="upload-percentage">0%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeUploadModal()">取消</button>
+          <button type="submit" id="btn-publish-submit" class="btn btn-primary glow-btn">
+            <span>确认发布</span> <i class="fa-solid fa-paper-plane"></i>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Custom Alert Toast Popup -->
+  <div id="toast-notification" class="toast hidden">
+    <div class="toast-content">
+      <i id="toast-icon" class="fa-solid fa-circle-check"></i>
+      <span id="toast-message">操作成功!</span>
+    </div>
+  </div>
+
+  <!-- Video Playback Modal (For My Videos Tab) -->
+  <div id="preview-modal" class="modal-overlay" onclick="closePreviewModal(event)">
+    <div class="preview-card" onclick="event.stopPropagation()">
+      <button class="preview-close-btn" onclick="closePreviewModal(null)">&times;</button>
+      <video id="preview-video-player" controls autoplay></video>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/app.js"></script>
+</body>
+</html>
