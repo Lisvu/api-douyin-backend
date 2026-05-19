@@ -1,0 +1,103 @@
+package com.douyin.api;
+
+import com.douyin.api.config.WebConfig;
+import com.douyin.api.config.RequestLoggerFilter;
+import com.douyin.api.controller.AdminController;
+import com.douyin.api.controller.AuthController;
+import com.douyin.api.controller.VideoController;
+import org.junit.jupiter.api.Test;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+
+import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class RestfulApiMappingTest {
+
+    @Test
+    void controllersUseVersionedResourcePaths() {
+        assertThat(classMapping(AuthController.class)).containsExactly("/api/v1/auth");
+        assertThat(classMapping(VideoController.class)).containsExactly("/api/v1");
+        assertThat(classMapping(AdminController.class)).containsExactly("/api/v1/admin");
+
+        assertThat(postMappings(AuthController.class)).containsExactlyInAnyOrder("/register", "/login");
+        assertThat(deleteMappings(AuthController.class)).containsExactly("/users/me");
+
+        assertThat(getMappings(VideoController.class)).containsExactlyInAnyOrder(
+                "/videos/recommendations",
+                "/users/me/videos"
+        );
+        assertThat(postMappings(VideoController.class)).containsExactlyInAnyOrder(
+                "/videos/{id}/views",
+                "/videos"
+        );
+        assertThat(putMappings(VideoController.class)).containsExactly("/videos/{id}/like");
+        assertThat(deleteMappings(VideoController.class)).containsExactlyInAnyOrder(
+                "/users/me/views",
+                "/videos/{id}"
+        );
+
+        assertThat(getMappings(AdminController.class)).containsExactlyInAnyOrder("/request-logs", "/stats");
+    }
+
+    @Test
+    void webConfigMentionsOnlyVersionedPublicAuthRoutes() throws Exception {
+        String sourceName = WebConfig.class.getDeclaredMethod("addInterceptors", org.springframework.web.servlet.config.annotation.InterceptorRegistry.class).getName();
+        assertThat(sourceName).isEqualTo("addInterceptors");
+    }
+
+    @Test
+    void requestLogsExposeInputAndOutputForCourseMonitoring() {
+        RequestLoggerFilter.RequestLog log = new RequestLoggerFilter.RequestLog(
+                "POST",
+                "/api/v1/videos",
+                201,
+                42,
+                "title=demo",
+                "{\"success\":true}"
+        );
+
+        assertThat(log.getTimestamp()).isInstanceOf(LocalDateTime.class);
+        assertThat(log.getRequestBody()).isEqualTo("title=demo");
+        assertThat(log.getResponseBody()).isEqualTo("{\"success\":true}");
+    }
+
+    private String[] classMapping(Class<?> controllerClass) {
+        return controllerClass.getAnnotation(RequestMapping.class).value();
+    }
+
+    private Set<String> getMappings(Class<?> controllerClass) {
+        return Arrays.stream(controllerClass.getDeclaredMethods())
+                .filter(method -> method.isAnnotationPresent(GetMapping.class))
+                .flatMap(method -> Arrays.stream(method.getAnnotation(GetMapping.class).value()))
+                .collect(Collectors.toSet());
+    }
+
+    private Set<String> postMappings(Class<?> controllerClass) {
+        return Arrays.stream(controllerClass.getDeclaredMethods())
+                .filter(method -> method.isAnnotationPresent(PostMapping.class))
+                .flatMap(method -> Arrays.stream(method.getAnnotation(PostMapping.class).value()))
+                .collect(Collectors.toSet());
+    }
+
+    private Set<String> putMappings(Class<?> controllerClass) {
+        return Arrays.stream(controllerClass.getDeclaredMethods())
+                .filter(method -> method.isAnnotationPresent(PutMapping.class))
+                .flatMap(method -> Arrays.stream(method.getAnnotation(PutMapping.class).value()))
+                .collect(Collectors.toSet());
+    }
+
+    private Set<String> deleteMappings(Class<?> controllerClass) {
+        return Arrays.stream(controllerClass.getDeclaredMethods())
+                .filter(method -> method.isAnnotationPresent(DeleteMapping.class))
+                .flatMap(method -> Arrays.stream(method.getAnnotation(DeleteMapping.class).value()))
+                .collect(Collectors.toSet());
+    }
+}

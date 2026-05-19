@@ -4,8 +4,11 @@ import jakarta.servlet.*;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
+import org.springframework.web.util.ContentCachingRequestWrapper;
+import org.springframework.web.util.ContentCachingResponseWrapper;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,12 +24,20 @@ public class RequestLoggerFilter implements Filter {
         private final String url;
         private final int statusCode;
         private final long durationMs;
+        private final String requestBody;
+        private final String responseBody;
 
         public RequestLog(String method, String url, int statusCode, long durationMs) {
+            this(method, url, statusCode, durationMs, "", "");
+        }
+
+        public RequestLog(String method, String url, int statusCode, long durationMs, String requestBody, String responseBody) {
             this.method = method;
             this.url = url;
             this.statusCode = statusCode;
             this.durationMs = durationMs;
+            this.requestBody = requestBody;
+            this.responseBody = responseBody;
         }
 
         public LocalDateTime getTimestamp() {
@@ -48,9 +59,18 @@ public class RequestLoggerFilter implements Filter {
         public long getDurationMs() {
             return durationMs;
         }
+
+        public String getRequestBody() {
+            return requestBody;
+        }
+
+        public String getResponseBody() {
+            return responseBody;
+        }
     }
 
     private static final int MAX_LOGS = 100;
+    private static final int MAX_BODY_CHARS = 1000;
     private final Queue<RequestLog> logsQueue = new ConcurrentLinkedQueue<>();
 
     public List<RequestLog> getLogs() {
@@ -73,30 +93,50 @@ public class RequestLoggerFilter implements Filter {
             throws ServletException, IOException {
 
         HttpServletRequest httpRequest = (HttpServletRequest) request;
-        HttpServletResponse httpResponse = (HttpServletResponse) response;
 
         String url = httpRequest.getRequestURI();
         
         // Skip administrative polling to keep the stats/logs dashboard clean from infinite-loop request pollution
-        if (url.contains("/h2-console") || url.contains("/api/admin/logs") || url.contains("/api/admin/stats") || "OPTIONS".equalsIgnoreCase(httpRequest.getMethod())) {
+        if (url.contains("/h2-console") || url.contains("/api/v1/admin/request-logs") || url.contains("/api/v1/admin/stats") || "OPTIONS".equalsIgnoreCase(httpRequest.getMethod())) {
             chain.doFilter(request, response);
             return;
         }
 
+        ContentCachingRequestWrapper wrappedRequest = new ContentCachingRequestWrapper(httpRequest);
+        ContentCachingResponseWrapper wrappedResponse = new ContentCachingResponseWrapper((HttpServletResponse) response);
         long startTime = System.currentTimeMillis();
         try {
-            chain.doFilter(request, response);
+            chain.doFilter(wrappedRequest, wrappedResponse);
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            int status = httpResponse.getStatus();
-            String method = httpRequest.getMethod();
+            int status = wrappedResponse.getStatus();
+            String method = wrappedRequest.getMethod();
 
-            if (url.startsWith("/api")) {
-                logsQueue.add(new RequestLog(method, url, status, duration));
+            if (url.startsWith("/api/v1")) {
+                logsQueue.add(new RequestLog(
+                        method,
+                        url,
+                        status,
+                        duration,
+                        bodyAsText(wrappedRequest.getContentAsByteArray()),
+                        bodyAsText(wrappedResponse.getContentAsByteArray())
+                ));
                 while (logsQueue.size() > MAX_LOGS) {
                     logsQueue.poll();
                 }
             }
+            wrappedResponse.copyBodyToResponse();
         }
+    }
+
+    private String bodyAsText(byte[] bodyBytes) {
+        if (bodyBytes == null || bodyBytes.length == 0) {
+            return "";
+        }
+        String text = new String(bodyBytes, StandardCharsets.UTF_8).replaceAll("\\s+", " ").trim();
+        if (text.length() <= MAX_BODY_CHARS) {
+            return text;
+        }
+        return text.substring(0, MAX_BODY_CHARS) + "...";
     }
 }

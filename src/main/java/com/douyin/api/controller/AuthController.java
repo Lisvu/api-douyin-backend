@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.Optional;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/v1/auth")
 public class AuthController {
 
     private final UserRepository userRepository;
@@ -116,7 +116,7 @@ public class AuthController {
     }
 
     // Delete Account (注销账户)
-    @PostMapping("/users/delete")
+    @DeleteMapping("/users/me")
     @Transactional
     public ResponseEntity<Map<String, Object>> deleteAccount(HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");

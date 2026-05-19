@@ -25,7 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/v1")
 public class VideoController {
 
     private final UserRepository userRepository;
@@ -48,7 +48,7 @@ public class VideoController {
     // ----------------------------------------------------
 
     // Get Recommended Videos (Exclude viewed, order by likes count DESC)
-    @GetMapping("/videos/recommend")
+    @GetMapping("/videos/recommendations")
     public ResponseEntity<Map<String, Object>> getRecommendations(HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         Map<String, Object> response = new HashMap<>();
@@ -93,7 +93,7 @@ public class VideoController {
     }
 
     // Record Video View (Visited - prevents from being recommended again)
-    @PostMapping("/videos/{id}/view")
+    @PostMapping("/videos/{id}/views")
     public ResponseEntity<Map<String, Object>> recordView(@PathVariable("id") Long videoId, HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         Map<String, Object> response = new HashMap<>();
@@ -115,7 +115,7 @@ public class VideoController {
     }
 
     // Reset watch history
-    @PostMapping("/videos/reset-views")
+    @DeleteMapping("/users/me/views")
     public ResponseEntity<Map<String, Object>> resetViews(HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         Map<String, Object> response = new HashMap<>();
@@ -133,7 +133,7 @@ public class VideoController {
     }
 
     // Toggle video like (点赞)
-    @PostMapping("/videos/{id}/like")
+    @PutMapping("/videos/{id}/like")
     @Transactional
     public ResponseEntity<Map<String, Object>> toggleLike(@PathVariable("id") Long videoId, HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
@@ -187,7 +187,7 @@ public class VideoController {
     // ----------------------------------------------------
 
     // Publish Video (accepts video file, optional cover file, title and description)
-    @PostMapping("/videos/publish")
+    @PostMapping("/videos")
     public ResponseEntity<Map<String, Object>> publishVideo(
             @RequestParam("title") String title,
             @RequestParam(value = "description", required = false) String description,
@@ -280,7 +280,7 @@ public class VideoController {
     }
 
     // View My Videos (Paginated)
-    @GetMapping("/videos/my")
+    @GetMapping("/users/me/videos")
     public ResponseEntity<Map<String, Object>> getMyVideos(
             @RequestParam(value = "page", defaultValue = "1") int page,
             @RequestParam(value = "limit", defaultValue = "6") int limit,

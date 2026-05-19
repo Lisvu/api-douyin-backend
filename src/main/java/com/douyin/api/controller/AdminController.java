@@ -14,7 +14,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @RestController
-@RequestMapping("/api/admin")
+@RequestMapping("/api/v1/admin")
 public class AdminController {
 
     private final UserRepository userRepository;
@@ -36,7 +36,7 @@ public class AdminController {
     }
 
     // Retrieve real-time request logs
-    @GetMapping("/logs")
+    @GetMapping("/request-logs")
     public ResponseEntity<Map<String, Object>> getLogs() {
         Map<String, Object> response = new HashMap<>();
         List<RequestLoggerFilter.RequestLog> rawLogs = requestLoggerFilter.getLogs();
@@ -53,6 +53,8 @@ public class AdminController {
             logMap.put("url", log.getUrl());
             logMap.put("statusCode", log.getStatusCode());
             logMap.put("durationMs", log.getDurationMs());
+            logMap.put("requestBody", log.getRequestBody());
+            logMap.put("responseBody", log.getResponseBody());
             formattedLogs.add(logMap);
         }
 
