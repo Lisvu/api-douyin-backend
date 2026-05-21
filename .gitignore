@@ -1,0 +1,54 @@
+# macOS
+.DS_Store
+
+# IDE / editor
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+*.swp
+*.swo
+
+# Maven / Java build output
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+# Test and build reports
+surefire-reports/
+failsafe-reports/
+*.dump
+*.dumpstream
+
+# Logs
+logs/
+*.log
+
+# Local database files
+data/*.db
+data/*.mv.db
+data/*.trace.db
+*.db
+*.mv.db
+*.trace.db
+
+# Runtime uploads / generated media
+uploads/
+public/uploads/
+public/videos/
+public/covers/
+
+# Local environment and secrets
+.env
+.env.*
+*.local
+application-local.properties
+application-dev.properties
+
+# Temporary files
+tmp/
+temp/
+*.tmp
