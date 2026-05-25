@@ -87,10 +87,28 @@ mvn clean test
 mvn spring-boot:run
 ```
 
+### 3. 打开 Swagger 在线接口文档
+项目已接入 Springdoc OpenAPI。后端服务启动成功后，可在浏览器打开 Swagger UI 查看接口文档并在线测试：
+```text
+http://localhost:8080/swagger-ui/index.html
+```
+
+OpenAPI JSON 原始文档地址：
+```text
+http://localhost:8080/v3/api-docs
+```
+
+如果本地通过 SSH 隧道连接服务器 PostgreSQL，请先保持数据库隧道开启，再启动后端：
+```powershell
+ssh -N -L 5432:127.0.0.1:5432 api
+```
+
 ---
 
 ## 🔗 接口访问地址
 
 *   **默认本地服务地址**：[http://localhost:8080](http://localhost:8080)
-*   所有 RESTful API 路由统一前缀为：`/api`（如用户登录接口为 `/api/login`）。
+*   **Swagger 在线文档**：[http://localhost:8080/swagger-ui/index.html](http://localhost:8080/swagger-ui/index.html)
+*   **OpenAPI JSON**：[http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs)
+*   所有 RESTful API 路由统一前缀为：`/api/v1`（如用户登录接口为 `/api/v1/auth/login`）。
 *   非公开接口（除登录、注册外）均被 JWT 拦截器保护，需在 HTTP 请求 Header 中携带 `Authorization: Bearer <Your_Token>`。

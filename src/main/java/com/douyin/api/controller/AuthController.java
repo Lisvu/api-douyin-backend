@@ -1,6 +1,7 @@
 package com.douyin.api.controller;
 
 import com.douyin.api.config.JwtUtil;
+import com.douyin.api.dto.AuthRequest;
 import com.douyin.api.model.User;
 import com.douyin.api.model.Video;
 import com.douyin.api.repository.LikeRepository;
@@ -44,9 +45,9 @@ public class AuthController {
 
     // User Registration
     @PostMapping("/register")
-    public ResponseEntity<Map<String, Object>> register(@RequestBody Map<String, String> body) {
-        String username = body.get("username");
-        String password = body.get("password");
+    public ResponseEntity<Map<String, Object>> register(@RequestBody AuthRequest body) {
+        String username = body.getUsername();
+        String password = body.getPassword();
 
         Map<String, Object> response = new HashMap<>();
         if (username == null || password == null || username.trim().isEmpty() || password.trim().isEmpty()) {
@@ -82,9 +83,9 @@ public class AuthController {
 
     // User Login
     @PostMapping("/login")
-    public ResponseEntity<Map<String, Object>> login(@RequestBody Map<String, String> body) {
-        String username = body.get("username");
-        String password = body.get("password");
+    public ResponseEntity<Map<String, Object>> login(@RequestBody AuthRequest body) {
+        String username = body.getUsername();
+        String password = body.getPassword();
 
         Map<String, Object> response = new HashMap<>();
         if (username == null || password == null || username.trim().isEmpty() || password.trim().isEmpty()) {
