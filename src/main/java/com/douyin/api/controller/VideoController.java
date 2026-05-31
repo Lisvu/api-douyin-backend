@@ -8,7 +8,9 @@ import com.douyin.api.repository.LikeRepository;
 import com.douyin.api.repository.UserRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
+import com.douyin.api.util.VideoResponseMapper;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -58,25 +60,10 @@ public class VideoController {
             List<Video> rawVideos = videoRepository.findRecommendedVideosForUser(userId);
             long totalVideosCount = videoRepository.count();
 
-            // Map each video to include extra fields: creator_name and is_liked
             List<Map<String, Object>> mappedVideos = new ArrayList<>();
             for (Video v : rawVideos) {
-                Map<String, Object> map = new HashMap<>();
-                map.put("id", v.getId());
-                map.put("user_id", v.getUser().getId());
-                map.put("title", v.getTitle());
-                map.put("description", v.getDescription());
-                map.put("video_url", v.getVideoUrl());
-                map.put("cover_url", v.getCoverUrl());
-                map.put("likes_count", v.getLikesCount());
-                map.put("created_at", v.getCreatedAt());
-                map.put("creator_name", v.getUser().getUsername());
-
-                // Check if user has liked this video
-                boolean isLiked = likeRepository.existsByUserIdAndVideoId(userId, v.getId());
-                map.put("is_liked", isLiked ? 1 : 0);
-
-                mappedVideos.add(map);
+                boolean liked = likeRepository.existsByUserIdAndVideoId(userId, v.getId());
+                mappedVideos.add(VideoResponseMapper.toFeedItem(v, liked));
             }
 
             response.put("success", true);
@@ -151,17 +138,14 @@ public class VideoController {
             Optional<Like> optionalLike = likeRepository.findByUserIdAndVideoId(userId, videoId);
 
             if (optionalLike.isPresent()) {
-                // Already liked -> UNLIKE
                 likeRepository.delete(optionalLike.get());
                 video.setLikesCount(Math.max(0, video.getLikesCount() - 1));
                 videoRepository.save(video);
 
                 response.put("success", true);
-                response.put("liked", false);
-                response.put("likes_count", video.getLikesCount());
                 response.put("message", "Video unliked.");
+                VideoResponseMapper.putLikeFields(response, false, video.getLikesCount());
             } else {
-                // Not liked -> LIKE
                 Like like = new Like(userId, videoId);
                 likeRepository.save(like);
 
@@ -169,11 +153,23 @@ public class VideoController {
                 videoRepository.save(video);
 
                 response.put("success", true);
-                response.put("liked", true);
-                response.put("likes_count", video.getLikesCount());
                 response.put("message", "Video liked!");
+                VideoResponseMapper.putLikeFields(response, true, video.getLikesCount());
             }
 
+            return ResponseEntity.ok(response);
+        } catch (DataIntegrityViolationException duplicateLike) {
+            // Concurrent duplicate like: unique (user_id, video_id) already exists
+            Video video = videoRepository.findById(videoId).orElse(null);
+            if (video == null) {
+                response.put("success", false);
+                response.put("message", "Video not found.");
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            }
+
+            response.put("success", true);
+            response.put("message", "Video already liked.");
+            VideoResponseMapper.putLikeFields(response, true, video.getLikesCount());
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             response.put("success", false);
@@ -296,6 +292,12 @@ public class VideoController {
         try {
             Page<Video> videoPage = videoRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable);
 
+            List<Map<String, Object>> mappedVideos = new ArrayList<>();
+            for (Video video : videoPage.getContent()) {
+                boolean liked = likeRepository.existsByUserIdAndVideoId(userId, video.getId());
+                mappedVideos.add(VideoResponseMapper.toFeedItem(video, liked));
+            }
+
             Map<String, Object> pagination = new HashMap<>();
             pagination.put("page", page);
             pagination.put("limit", limit);
@@ -303,7 +305,7 @@ public class VideoController {
             pagination.put("totalPages", videoPage.getTotalPages());
 
             response.put("success", true);
-            response.put("videos", videoPage.getContent());
+            response.put("videos", mappedVideos);
             response.put("pagination", pagination);
 
             return ResponseEntity.ok(response);
@@ -337,6 +339,9 @@ public class VideoController {
                 response.put("message", "Permission denied. You can only delete your own uploaded videos.");
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
             }
+
+            // Delete related likes before removing the video record
+            likeRepository.deleteByVideoId(videoId);
 
             // Delete physical local files
             deleteLocalFilesForVideo(video);
