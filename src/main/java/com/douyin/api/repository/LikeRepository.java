@@ -10,4 +10,5 @@ import java.util.Optional;
 public interface LikeRepository extends JpaRepository<Like, Long> {
     Optional<Like> findByUserIdAndVideoId(Long userId, Long videoId);
     boolean existsByUserIdAndVideoId(Long userId, Long videoId);
+    void deleteByVideoId(Long videoId);
 }
