@@ -1,8 +1,12 @@
 package com.douyin.api.config;
 
+import com.douyin.api.model.RequestLog;
+import com.douyin.api.repository.RequestLogRepository;
 import jakarta.servlet.*;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.ContentCachingRequestWrapper;
 import org.springframework.web.util.ContentCachingResponseWrapper;
@@ -10,82 +14,19 @@ import org.springframework.web.util.ContentCachingResponseWrapper;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.UUID;
 
 @Component
 public class RequestLoggerFilter implements Filter {
 
-    public static class RequestLog {
-        private final LocalDateTime timestamp = LocalDateTime.now();
-        private final String method;
-        private final String url;
-        private final int statusCode;
-        private final long durationMs;
-        private final String requestBody;
-        private final String responseBody;
-
-        public RequestLog(String method, String url, int statusCode, long durationMs) {
-            this(method, url, statusCode, durationMs, "", "");
-        }
-
-        public RequestLog(String method, String url, int statusCode, long durationMs, String requestBody, String responseBody) {
-            this.method = method;
-            this.url = url;
-            this.statusCode = statusCode;
-            this.durationMs = durationMs;
-            this.requestBody = requestBody;
-            this.responseBody = responseBody;
-        }
-
-        public LocalDateTime getTimestamp() {
-            return timestamp;
-        }
-
-        public String getMethod() {
-            return method;
-        }
-
-        public String getUrl() {
-            return url;
-        }
-
-        public int getStatusCode() {
-            return statusCode;
-        }
-
-        public long getDurationMs() {
-            return durationMs;
-        }
-
-        public String getRequestBody() {
-            return requestBody;
-        }
-
-        public String getResponseBody() {
-            return responseBody;
-        }
-    }
-
-    private static final int MAX_LOGS = 100;
+    private static final Logger log = LoggerFactory.getLogger(RequestLoggerFilter.class);
     private static final int MAX_BODY_CHARS = 1000;
-    private final Queue<RequestLog> logsQueue = new ConcurrentLinkedQueue<>();
+    private static final long SLOW_THRESHOLD_MS = 500;
 
-    public List<RequestLog> getLogs() {
-        return new ArrayList<>(logsQueue);
-    }
+    private final RequestLogRepository requestLogRepository;
 
-    public double getAverageResponseTimeMs() {
-        return logsQueue.stream()
-                .mapToLong(RequestLog::getDurationMs)
-                .average()
-                .orElse(0.0);
-    }
-
-    public int getTotalRequests() {
-        return logsQueue.size();
+    public RequestLoggerFilter(RequestLogRepository requestLogRepository) {
+        this.requestLogRepository = requestLogRepository;
     }
 
     @Override
@@ -93,50 +34,94 @@ public class RequestLoggerFilter implements Filter {
             throws ServletException, IOException {
 
         HttpServletRequest httpRequest = (HttpServletRequest) request;
-
         String url = httpRequest.getRequestURI();
-        
-        // Skip administrative polling to keep the stats/logs dashboard clean from infinite-loop request pollution
-        if (url.contains("/h2-console") || url.contains("/api/v1/admin/request-logs") || url.contains("/api/v1/admin/stats") || "OPTIONS".equalsIgnoreCase(httpRequest.getMethod())) {
+
+        // 跳过 admin 监控接口、h2控制台、OPTIONS 预检
+        if (url.contains("/h2-console")
+                || url.contains("/api/v1/admin/request-logs")
+                || url.contains("/api/v1/admin/stats")
+                || "OPTIONS".equalsIgnoreCase(httpRequest.getMethod())) {
             chain.doFilter(request, response);
             return;
         }
 
-        ContentCachingRequestWrapper wrappedRequest = new ContentCachingRequestWrapper(httpRequest);
-        ContentCachingResponseWrapper wrappedResponse = new ContentCachingResponseWrapper((HttpServletResponse) response);
+        ContentCachingRequestWrapper wrappedRequest =
+                new ContentCachingRequestWrapper(httpRequest);
+        ContentCachingResponseWrapper wrappedResponse =
+                new ContentCachingResponseWrapper((HttpServletResponse) response);
+
+        String traceId = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
         long startTime = System.currentTimeMillis();
+
         try {
             chain.doFilter(wrappedRequest, wrappedResponse);
         } finally {
             long duration = System.currentTimeMillis() - startTime;
             int status = wrappedResponse.getStatus();
             String method = wrappedRequest.getMethod();
+            Long userId = (Long) httpRequest.getAttribute("userId");
+
+            String reqBody = maskPassword(bodyAsText(wrappedRequest.getContentAsByteArray()));
+            String resBody = maskPassword(bodyAsText(wrappedResponse.getContentAsByteArray()));
 
             if (url.startsWith("/api/v1")) {
-                logsQueue.add(new RequestLog(
-                        method,
-                        url,
-                        status,
-                        duration,
-                        bodyAsText(wrappedRequest.getContentAsByteArray()),
-                        bodyAsText(wrappedResponse.getContentAsByteArray())
-                ));
-                while (logsQueue.size() > MAX_LOGS) {
-                    logsQueue.poll();
+                // 1. 慢接口告警
+                if (duration > SLOW_THRESHOLD_MS) {
+                    log.warn("Slow API detected: path={}, costMs={}ms, userId={}, traceId={}",
+                            url, duration, userId, traceId);
+                }
+
+                // 2. 控制台日志（含 traceId/userId/ip）
+                log.info("[{}] {} {} {} {}ms userId={} ip={}",
+                        traceId, method, url, status, duration,
+                        userId, getClientIp(httpRequest));
+
+                // 3. 持久化到数据库（唯一存储）
+                try {
+                    RequestLog entity = new RequestLog();
+                    entity.setMethod(method);
+                    entity.setUrl(url);
+                    entity.setStatusCode(status);
+                    entity.setDurationMs(duration);
+                    entity.setRequestBody(reqBody);
+                    entity.setResponseBody(resBody);
+                    entity.setTimestamp(LocalDateTime.now());
+                    requestLogRepository.save(entity);
+                } catch (Exception e) {
+                    log.error("Failed to save request log: {}", e.getMessage());
                 }
             }
+
             wrappedResponse.copyBodyToResponse();
         }
     }
 
     private String bodyAsText(byte[] bodyBytes) {
-        if (bodyBytes == null || bodyBytes.length == 0) {
-            return "";
-        }
-        String text = new String(bodyBytes, StandardCharsets.UTF_8).replaceAll("\\s+", " ").trim();
-        if (text.length() <= MAX_BODY_CHARS) {
-            return text;
-        }
-        return text.substring(0, MAX_BODY_CHARS) + "...";
+        if (bodyBytes == null || bodyBytes.length == 0) return "";
+        String text = new String(bodyBytes, StandardCharsets.UTF_8)
+                .replaceAll("\\s+", " ").trim();
+        return text.length() <= MAX_BODY_CHARS
+                ? text
+                : text.substring(0, MAX_BODY_CHARS) + "...";
+    }
+
+    private String maskPassword(String body) {
+        if (body == null || body.isEmpty()) return body;
+        // 脱敏 password 字段
+        body = body.replaceAll(
+                "\"password\"\\s*:\\s*\"[^\"]*\"",
+                "\"password\":\"******\"");
+        // 脱敏 token 字段（登录响应里的 JWT）
+        body = body.replaceAll(
+                "\"token\"\\s*:\\s*\"[^\"]*\"",
+                "\"token\":\"******\"");
+        return body;
+    }
+
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        return (ip != null && !ip.isBlank())
+                ? ip.split(",")[0].trim()
+                : request.getRemoteAddr();
     }
 }

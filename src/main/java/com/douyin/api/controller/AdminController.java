@@ -1,14 +1,12 @@
 package com.douyin.api.controller;
 
-import com.douyin.api.config.RequestLoggerFilter;
-import com.douyin.api.repository.LikeRepository;
-import com.douyin.api.repository.UserRepository;
-import com.douyin.api.repository.VideoRepository;
-import com.douyin.api.repository.ViewRepository;
+import com.douyin.api.repository.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -21,32 +19,36 @@ public class AdminController {
     private final VideoRepository videoRepository;
     private final LikeRepository likeRepository;
     private final ViewRepository viewRepository;
-    private final RequestLoggerFilter requestLoggerFilter;
+    private final RequestLogRepository requestLogRepository;  // 新增
 
     public AdminController(UserRepository userRepository,
                            VideoRepository videoRepository,
                            LikeRepository likeRepository,
                            ViewRepository viewRepository,
-                           RequestLoggerFilter requestLoggerFilter) {
+                           RequestLogRepository requestLogRepository) {
         this.userRepository = userRepository;
         this.videoRepository = videoRepository;
         this.likeRepository = likeRepository;
         this.viewRepository = viewRepository;
-        this.requestLoggerFilter = requestLoggerFilter;
+        this.requestLogRepository = requestLogRepository;
     }
 
-    // Retrieve real-time request logs
+    // 从数据库查询日志（支持分页和限制）
     @GetMapping("/request-logs")
-    public ResponseEntity<Map<String, Object>> getLogs() {
+    public ResponseEntity<Map<String, Object>> getLogs(
+            @RequestParam(value = "limit", defaultValue = "100") int limit,
+            @RequestParam(value = "page", defaultValue = "1") int page) {
+
         Map<String, Object> response = new HashMap<>();
-        List<RequestLoggerFilter.RequestLog> rawLogs = requestLoggerFilter.getLogs();
+
+        // 分页查询，按时间倒序
+        Pageable pageable = PageRequest.of(page - 1, limit, Sort.by("timestamp").descending());
+        Page<com.douyin.api.model.RequestLog> dbLogs = requestLogRepository.findAllByOrderByTimestampDesc(pageable);
 
         List<Map<String, Object>> formattedLogs = new ArrayList<>();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-        // Format and reverse to show most recent logs first
-        for (int i = rawLogs.size() - 1; i >= 0; i--) {
-            RequestLoggerFilter.RequestLog log = rawLogs.get(i);
+        for (com.douyin.api.model.RequestLog log : dbLogs) {
             Map<String, Object> logMap = new HashMap<>();
             logMap.put("timestamp", log.getTimestamp().format(formatter));
             logMap.put("method", log.getMethod());
@@ -60,10 +62,14 @@ public class AdminController {
 
         response.put("success", true);
         response.put("logs", formattedLogs);
+        response.put("total", dbLogs.getTotalElements());
+        response.put("totalPages", dbLogs.getTotalPages());
+        response.put("currentPage", page);
+
         return ResponseEntity.ok(response);
     }
 
-    // Retrieve system dashboard statistics
+    // 统计数据（从数据库查询）
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Object>> getStats() {
         Map<String, Object> response = new HashMap<>();
@@ -74,15 +80,16 @@ public class AdminController {
             long likeCount = likeRepository.count();
             long viewCount = viewRepository.count();
 
-            double avgDuration = requestLoggerFilter.getAverageResponseTimeMs();
-            int totalRequests = requestLoggerFilter.getLogs().size();
+            // 从数据库计算平均耗时
+            Double avgDuration = requestLogRepository.getAverageDurationMs();
+            long totalRequests = requestLogRepository.count();
 
             Map<String, Object> stats = new HashMap<>();
             stats.put("users", userCount);
             stats.put("videos", videoCount);
             stats.put("likes", likeCount);
             stats.put("views", viewCount);
-            stats.put("averageResponseTimeMs", Math.round(avgDuration * 100.0) / 100.0); // rounded to 2 decimals
+            stats.put("averageResponseTimeMs", avgDuration != null ? Math.round(avgDuration * 100.0) / 100.0 : 0.0);
             stats.put("totalRequestsLogged", totalRequests);
 
             response.put("success", true);
