@@ -41,8 +41,13 @@ public class AdminController {
 
         Map<String, Object> response = new HashMap<>();
 
+        // 参数校验和边界保护
+        int MAX_PAGE_SIZE = 100;
+        int safePage = Math.max(1, page);                             // page 最小为 1
+        int safeLimit = Math.min(MAX_PAGE_SIZE, Math.max(1, limit)); // limit 限制在 1-100 之间
+
         // 分页查询，按时间倒序
-        Pageable pageable = PageRequest.of(page - 1, limit, Sort.by("timestamp").descending());
+        Pageable pageable = PageRequest.of(safePage - 1, safeLimit, Sort.by("timestamp").descending());
         Page<com.douyin.api.model.RequestLog> dbLogs = requestLogRepository.findAllByOrderByTimestampDesc(pageable);
 
         List<Map<String, Object>> formattedLogs = new ArrayList<>();
@@ -64,7 +69,8 @@ public class AdminController {
         response.put("logs", formattedLogs);
         response.put("total", dbLogs.getTotalElements());
         response.put("totalPages", dbLogs.getTotalPages());
-        response.put("currentPage", page);
+        response.put("currentPage", safePage);
+        response.put("limit", safeLimit);  // 返回实际使用的 limit，方便前端知道限制
 
         return ResponseEntity.ok(response);
     }
