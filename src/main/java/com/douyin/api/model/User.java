@@ -20,6 +20,12 @@ public class User {
     @Column(name = "display_name", nullable = false, length = 64)
     private String displayName;
 
+    @Column(name = "avatar_url")
+    private String avatarUrl;
+
+    @Column(length = 255)
+    private String bio;
+
     @Column(nullable = false, length = 20)
     private String status = "active";
 
@@ -78,6 +84,22 @@ public class User {
 
     public void setDisplayName(String displayName) {
         this.displayName = displayName;
+    }
+
+    public String getAvatarUrl() {
+        return avatarUrl;
+    }
+
+    public void setAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
+    }
+
+    public String getBio() {
+        return bio;
+    }
+
+    public void setBio(String bio) {
+        this.bio = bio;
     }
 
     public String getStatus() {

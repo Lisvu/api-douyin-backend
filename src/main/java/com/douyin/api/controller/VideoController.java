@@ -88,6 +88,12 @@ public class VideoController {
         try {
             // Insert view record if not exists
             if (!viewRepository.existsByUserIdAndVideoId(userId, videoId)) {
+                Optional<Video> optionalVideo = videoRepository.findById(videoId);
+                if (optionalVideo.isEmpty()) {
+                    response.put("success", false);
+                    response.put("message", "Video not found.");
+                    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+                }
                 View view = new View(userId, videoId);
                 viewRepository.save(view);
             }
@@ -362,13 +368,13 @@ public class VideoController {
 
     private void deleteLocalFilesForVideo(Video video) {
         if (video.getVideoUrl() != null && video.getVideoUrl().startsWith("/uploads/videos/")) {
-            File file = new File("." + video.getVideoUrl());
+            File file = new File("./public" + video.getVideoUrl());
             if (file.exists()) {
                 file.delete();
             }
         }
         if (video.getCoverUrl() != null && video.getCoverUrl().startsWith("/uploads/covers/")) {
-            File file = new File("." + video.getCoverUrl());
+            File file = new File("./public" + video.getCoverUrl());
             if (file.exists()) {
                 file.delete();
             }

@@ -24,6 +24,10 @@ public final class VideoResponseMapper {
         item.put("description", video.getDescription());
         item.put("video_url", video.getVideoUrl());
         item.put("cover_url", video.getCoverUrl());
+        item.put("views_count", 0);
+        item.put("comments_count", 0);
+        item.put("favorites_count", 0);
+        item.put("status", "published");
         item.put("created_at", video.getCreatedAt());
         item.put("creator_name", video.getUser().getUsername());
 

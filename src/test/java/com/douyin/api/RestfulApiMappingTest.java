@@ -4,6 +4,7 @@ import com.douyin.api.config.WebConfig;
 import com.douyin.api.config.RequestLoggerFilter;
 import com.douyin.api.controller.AdminController;
 import com.douyin.api.controller.AuthController;
+import com.douyin.api.controller.UserController;
 import com.douyin.api.controller.VideoController;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -24,11 +25,13 @@ class RestfulApiMappingTest {
     @Test
     void controllersUseVersionedResourcePaths() {
         assertThat(classMapping(AuthController.class)).containsExactly("/api/v1/auth");
+        assertThat(classMapping(UserController.class)).containsExactly("/api/v1/users");
         assertThat(classMapping(VideoController.class)).containsExactly("/api/v1");
         assertThat(classMapping(AdminController.class)).containsExactly("/api/v1/admin");
 
         assertThat(postMappings(AuthController.class)).containsExactlyInAnyOrder("/register", "/login");
-        assertThat(deleteMappings(AuthController.class)).containsExactly("/users/me");
+        assertThat(getMappings(UserController.class)).containsExactly("/me");
+        assertThat(deleteMappings(UserController.class)).containsExactly("/me");
 
         assertThat(getMappings(VideoController.class)).containsExactlyInAnyOrder(
                 "/videos/recommendations",

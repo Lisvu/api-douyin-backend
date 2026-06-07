@@ -12,6 +12,8 @@ import java.util.List;
 
 @Repository
 public interface VideoRepository extends JpaRepository<Video, Long> {
+
+    List<Video> findByUserId(Long userId);
     
     // Find all videos by a specific user with pagination, ordered by creation date descending
     Page<Video> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);

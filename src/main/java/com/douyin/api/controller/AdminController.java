@@ -1,8 +1,11 @@
 package com.douyin.api.controller;
 
 import com.douyin.api.config.RequestLoggerFilter;
+import com.douyin.api.repository.CommentRepository;
+import com.douyin.api.repository.FavoriteRepository;
 import com.douyin.api.repository.LikeRepository;
 import com.douyin.api.repository.UserRepository;
+import com.douyin.api.repository.UserRelationRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
 import org.springframework.http.ResponseEntity;
@@ -21,17 +24,26 @@ public class AdminController {
     private final VideoRepository videoRepository;
     private final LikeRepository likeRepository;
     private final ViewRepository viewRepository;
+    private final FavoriteRepository favoriteRepository;
+    private final CommentRepository commentRepository;
+    private final UserRelationRepository userRelationRepository;
     private final RequestLoggerFilter requestLoggerFilter;
 
     public AdminController(UserRepository userRepository,
                            VideoRepository videoRepository,
                            LikeRepository likeRepository,
                            ViewRepository viewRepository,
+                           FavoriteRepository favoriteRepository,
+                           CommentRepository commentRepository,
+                           UserRelationRepository userRelationRepository,
                            RequestLoggerFilter requestLoggerFilter) {
         this.userRepository = userRepository;
         this.videoRepository = videoRepository;
         this.likeRepository = likeRepository;
         this.viewRepository = viewRepository;
+        this.favoriteRepository = favoriteRepository;
+        this.commentRepository = commentRepository;
+        this.userRelationRepository = userRelationRepository;
         this.requestLoggerFilter = requestLoggerFilter;
     }
 
@@ -73,6 +85,9 @@ public class AdminController {
             long videoCount = videoRepository.count();
             long likeCount = likeRepository.count();
             long viewCount = viewRepository.count();
+            long favoriteCount = favoriteRepository.count();
+            long commentCount = commentRepository.count();
+            long relationCount = userRelationRepository.count();
 
             double avgDuration = requestLoggerFilter.getAverageResponseTimeMs();
             int totalRequests = requestLoggerFilter.getLogs().size();
@@ -82,6 +97,9 @@ public class AdminController {
             stats.put("videos", videoCount);
             stats.put("likes", likeCount);
             stats.put("views", viewCount);
+            stats.put("favorites", favoriteCount);
+            stats.put("comments", commentCount);
+            stats.put("relations", relationCount);
             stats.put("averageResponseTimeMs", Math.round(avgDuration * 100.0) / 100.0); // rounded to 2 decimals
             stats.put("totalRequestsLogged", totalRequests);
 
