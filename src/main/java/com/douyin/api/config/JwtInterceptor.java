@@ -27,7 +27,7 @@ public class JwtInterceptor implements HandlerInterceptor {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json;charset=UTF-8");
-            response.getWriter().write("{\"success\":false,\"message\":\"Access Denied: Missing or malformed Authorization header.\"}");
+            response.getWriter().write("{\"success\":false,\"message\":\"Access Denied: Missing or malformed Authorization header.\",\"data\":{}}");
             return false;
         }
 
@@ -37,7 +37,7 @@ public class JwtInterceptor implements HandlerInterceptor {
         if (claims == null) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json;charset=UTF-8");
-            response.getWriter().write("{\"success\":false,\"message\":\"Access Denied: Invalid or expired token.\"}");
+            response.getWriter().write("{\"success\":false,\"message\":\"Access Denied: Invalid or expired token.\",\"data\":{}}");
             return false;
         }
 

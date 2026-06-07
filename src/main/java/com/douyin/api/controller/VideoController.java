@@ -34,6 +34,8 @@ public class VideoController {
     private final VideoRepository videoRepository;
     private final LikeRepository likeRepository;
     private final ViewRepository viewRepository;
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(VideoController.class);
 
     public VideoController(UserRepository userRepository,
                            VideoRepository videoRepository,
@@ -325,59 +327,57 @@ public class VideoController {
     // Delete My Video (owner permission checking)
     @DeleteMapping("/videos/{id}")
     @Transactional
-    public ResponseEntity<Map<String, Object>> deleteVideo(@PathVariable("id") Long videoId, HttpServletRequest request) {
+    public ResponseEntity<Map<String, Object>> deleteVideo(
+            @PathVariable("id") Long videoId,
+            HttpServletRequest request) {
+
         Long userId = (Long) request.getAttribute("userId");
-        Map<String, Object> response = new HashMap<>();
+        Map<String, Object> response = new LinkedHashMap<>();
 
-        try {
-            Optional<Video> optionalVideo = videoRepository.findById(videoId);
-            if (optionalVideo.isEmpty()) {
-                response.put("success", false);
-                response.put("message", "Video not found.");
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
-            }
-
-            Video video = optionalVideo.get();
-
-            // STRICT OWNER CHECKING
-            if (!video.getUser().getId().equals(userId)) {
-                response.put("success", false);
-                response.put("message", "Permission denied. You can only delete your own uploaded videos.");
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
-            }
-
-            // Delete related likes before removing the video record
-            likeRepository.deleteByVideoId(videoId);
-
-            // Delete physical local files
-            deleteLocalFilesForVideo(video);
-
-            // Delete DB record
-            videoRepository.delete(video);
-
-            response.put("success", true);
-            response.put("message", "Video deleted successfully!");
-            return ResponseEntity.ok(response);
-
-        } catch (Exception e) {
+        // 查视频是否存在
+        Optional<Video> optionalVideo = videoRepository.findById(videoId);
+        if (optionalVideo.isEmpty()) {
             response.put("success", false);
-            response.put("message", "Error deleting video: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+            response.put("message", "Video not found");
+            response.put("data", new HashMap<>());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
         }
+
+        Video video = optionalVideo.get();
+
+        // 权限校验，只能删自己的视频
+        if (!video.getUser().getId().equals(userId)) {
+            response.put("success", false);
+            response.put("message", "Forbidden: you can only delete your own videos");
+            response.put("data", new HashMap<>());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+        }
+
+        // 事务内删关联记录 + 主记录
+        likeRepository.deleteByVideoId(videoId);
+        viewRepository.deleteByVideoId(videoId);
+        videoRepository.delete(video);
+
+        // 事务外删本地文件
+        deleteLocalFile(video.getVideoUrl(), "/uploads/videos/");
+        deleteLocalFile(video.getCoverUrl(), "/uploads/covers/");
+
+        response.put("success", true);
+        response.put("message", "Video deleted");
+        response.put("data", new HashMap<>());
+        return ResponseEntity.ok(response);
     }
 
-    private void deleteLocalFilesForVideo(Video video) {
-        if (video.getVideoUrl() != null && video.getVideoUrl().startsWith("/uploads/videos/")) {
-            File file = new File("./public" + video.getVideoUrl());
-            if (file.exists()) {
-                file.delete();
+    private void deleteLocalFile(String url, String expectedPrefix) {
+        if (url == null || !url.startsWith(expectedPrefix)) return;
+        try {
+            java.nio.file.Path path = java.nio.file.Paths.get("./public" + url);
+            boolean deleted = java.nio.file.Files.deleteIfExists(path);
+            if (!deleted) {
+                log.warn("File not found, skip delete: {}", path);
             }
-        }
-        if (video.getCoverUrl() != null && video.getCoverUrl().startsWith("/uploads/covers/")) {
-            File file = new File("./public" + video.getCoverUrl());
-            if (file.exists()) {
-                file.delete();
-            }
+        } catch (IOException e) {
+            log.warn("Failed to delete file: {}", url, e);
         }
     }
 

@@ -1,11 +1,11 @@
 package com.douyin.api;
 
 import com.douyin.api.config.WebConfig;
-import com.douyin.api.config.RequestLoggerFilter;
 import com.douyin.api.controller.AdminController;
 import com.douyin.api.controller.AuthController;
 import com.douyin.api.controller.UserController;
 import com.douyin.api.controller.VideoController;
+import com.douyin.api.model.RequestLog;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -58,18 +58,22 @@ class RestfulApiMappingTest {
 
     @Test
     void requestLogsExposeInputAndOutputForCourseMonitoring() {
-        RequestLoggerFilter.RequestLog log = new RequestLoggerFilter.RequestLog(
-                "POST",
-                "/api/v1/videos",
-                201,
-                42,
-                "title=demo",
-                "{\"success\":true}"
-        );
+        RequestLog log = new RequestLog();
+        log.setMethod("POST");
+        log.setUrl("/api/v1/videos");
+        log.setStatusCode(201);
+        log.setDurationMs(42L);
+        log.setRequestBody("title=demo");
+        log.setResponseBody("{\"success\":true}");
+        log.setTimestamp(LocalDateTime.now());
 
         assertThat(log.getTimestamp()).isInstanceOf(LocalDateTime.class);
         assertThat(log.getRequestBody()).isEqualTo("title=demo");
         assertThat(log.getResponseBody()).isEqualTo("{\"success\":true}");
+        assertThat(log.getMethod()).isEqualTo("POST");
+        assertThat(log.getUrl()).isEqualTo("/api/v1/videos");
+        assertThat(log.getStatusCode()).isEqualTo(201);
+        assertThat(log.getDurationMs()).isEqualTo(42);
     }
 
     private String[] classMapping(Class<?> controllerClass) {

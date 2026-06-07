@@ -1,17 +1,19 @@
 package com.douyin.api.controller;
 
-import com.douyin.api.config.RequestLoggerFilter;
 import com.douyin.api.repository.CommentRepository;
 import com.douyin.api.repository.FavoriteRepository;
 import com.douyin.api.repository.LikeRepository;
+import com.douyin.api.repository.RequestLogRepository;
 import com.douyin.api.repository.UserRepository;
 import com.douyin.api.repository.UserRelationRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -27,7 +29,7 @@ public class AdminController {
     private final FavoriteRepository favoriteRepository;
     private final CommentRepository commentRepository;
     private final UserRelationRepository userRelationRepository;
-    private final RequestLoggerFilter requestLoggerFilter;
+    private final RequestLogRepository requestLogRepository;
 
     public AdminController(UserRepository userRepository,
                            VideoRepository videoRepository,
@@ -36,7 +38,7 @@ public class AdminController {
                            FavoriteRepository favoriteRepository,
                            CommentRepository commentRepository,
                            UserRelationRepository userRelationRepository,
-                           RequestLoggerFilter requestLoggerFilter) {
+                           RequestLogRepository requestLogRepository) {
         this.userRepository = userRepository;
         this.videoRepository = videoRepository;
         this.likeRepository = likeRepository;
@@ -44,21 +46,30 @@ public class AdminController {
         this.favoriteRepository = favoriteRepository;
         this.commentRepository = commentRepository;
         this.userRelationRepository = userRelationRepository;
-        this.requestLoggerFilter = requestLoggerFilter;
+        this.requestLogRepository = requestLogRepository;
     }
 
-    // Retrieve real-time request logs
+    // 从数据库查询日志（支持分页和限制）
     @GetMapping("/request-logs")
-    public ResponseEntity<Map<String, Object>> getLogs() {
+    public ResponseEntity<Map<String, Object>> getLogs(
+            @RequestParam(value = "limit", defaultValue = "100") int limit,
+            @RequestParam(value = "page", defaultValue = "1") int page) {
+
         Map<String, Object> response = new HashMap<>();
-        List<RequestLoggerFilter.RequestLog> rawLogs = requestLoggerFilter.getLogs();
+
+        // 参数校验和边界保护
+        int MAX_PAGE_SIZE = 100;
+        int safePage = Math.max(1, page);                             // page 最小为 1
+        int safeLimit = Math.min(MAX_PAGE_SIZE, Math.max(1, limit)); // limit 限制在 1-100 之间
+
+        // 分页查询，按时间倒序
+        Pageable pageable = PageRequest.of(safePage - 1, safeLimit, Sort.by("timestamp").descending());
+        Page<com.douyin.api.model.RequestLog> dbLogs = requestLogRepository.findAllByOrderByTimestampDesc(pageable);
 
         List<Map<String, Object>> formattedLogs = new ArrayList<>();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-        // Format and reverse to show most recent logs first
-        for (int i = rawLogs.size() - 1; i >= 0; i--) {
-            RequestLoggerFilter.RequestLog log = rawLogs.get(i);
+        for (com.douyin.api.model.RequestLog log : dbLogs) {
             Map<String, Object> logMap = new HashMap<>();
             logMap.put("timestamp", log.getTimestamp().format(formatter));
             logMap.put("method", log.getMethod());
@@ -72,10 +83,15 @@ public class AdminController {
 
         response.put("success", true);
         response.put("logs", formattedLogs);
+        response.put("total", dbLogs.getTotalElements());
+        response.put("totalPages", dbLogs.getTotalPages());
+        response.put("currentPage", safePage);
+        response.put("limit", safeLimit);  // 返回实际使用的 limit，方便前端知道限制
+
         return ResponseEntity.ok(response);
     }
 
-    // Retrieve system dashboard statistics
+    // 统计数据（从数据库查询）
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Object>> getStats() {
         Map<String, Object> response = new HashMap<>();
@@ -89,8 +105,9 @@ public class AdminController {
             long commentCount = commentRepository.count();
             long relationCount = userRelationRepository.count();
 
-            double avgDuration = requestLoggerFilter.getAverageResponseTimeMs();
-            int totalRequests = requestLoggerFilter.getLogs().size();
+            // 从数据库计算平均耗时
+            Double avgDuration = requestLogRepository.getAverageDurationMs();
+            long totalRequests = requestLogRepository.count();
 
             Map<String, Object> stats = new HashMap<>();
             stats.put("users", userCount);
@@ -100,7 +117,7 @@ public class AdminController {
             stats.put("favorites", favoriteCount);
             stats.put("comments", commentCount);
             stats.put("relations", relationCount);
-            stats.put("averageResponseTimeMs", Math.round(avgDuration * 100.0) / 100.0); // rounded to 2 decimals
+            stats.put("averageResponseTimeMs", avgDuration != null ? Math.round(avgDuration * 100.0) / 100.0 : 0.0);
             stats.put("totalRequestsLogged", totalRequests);
 
             response.put("success", true);

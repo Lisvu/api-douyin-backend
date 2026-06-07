@@ -2,6 +2,9 @@ package com.douyin.api.repository;
 
 import com.douyin.api.model.View;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,9 +19,13 @@ public interface ViewRepository extends JpaRepository<View, Long> {
     @Transactional
     void deleteByUserId(Long userId);
 
+    @Modifying
     @Transactional
-    void deleteByVideoId(Long videoId);
+    @Query("DELETE FROM View v WHERE v.videoId = :videoId")
+    void deleteByVideoId(@Param("videoId") Long videoId);
 
+    @Modifying
     @Transactional
-    void deleteByVideoIdIn(Collection<Long> videoIds);
+    @Query("DELETE FROM View v WHERE v.videoId IN :videoIds")
+    void deleteByVideoIdIn(@Param("videoIds") Collection<Long> videoIds);
 }
