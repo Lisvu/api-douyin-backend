@@ -178,6 +178,286 @@ curl -X POST "http://165.232.172.99:8080/api/v1/auth/login" \
 
 ---
 
+## 获取推荐视频列表（F02）
+
+- 接口说明：按点赞数倒序返回当前用户未观看过的视频列表，用于首页推荐流展示。
+- 请求方法：`GET`
+- 请求路径：`/api/v1/videos/recommendations`
+- 是否需要登录：`是`
+
+
+### Path / Query / Body 参数
+
+无。
+
+### 请求示例
+
+```bash
+curl -X GET "http://localhost:8080/api/v1/videos/recommendations" \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+### 成功响应 `200 OK`
+
+```json
+{
+  "success": true,
+  "videos": [
+    {
+      "id": 2,
+      "user_id": 1,
+      "title": "DCloud 移动端跨平台技术",
+      "description": "uni-app 跨平台开发核心技术讲解",
+      "video_url": "https://qiniu-web-assets.dcloud.net.cn/unidoc/zh/uni-app-video-courses.mp4",
+      "cover_url": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800",
+      "likes_count": 580,
+      "likeCount": 580,
+      "liked": false,
+      "is_liked": 0,
+      "creator_name": "douyin_creator",
+      "created_at": "2026-01-01T10:00:00"
+    }
+  ],
+  "allViewed": false,
+  "totalCount": 6
+}
+```
+
+### 全部看完 `200 OK`
+
+```json
+{
+  "success": true,
+  "videos": [],
+  "allViewed": true,
+  "totalCount": 6
+}
+```
+
+### 失败响应
+
+`401 Unauthorized`
+
+```json
+{
+  "success": false,
+  "message": "Access Denied: Missing or malformed Authorization header."
+}
+```
+
+`500 Internal Server Error`
+
+```json
+{
+  "success": false,
+  "message": "Error compiling recommendations: <detail>"
+}
+```
+
+### 响应字段说明
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `success` | boolean | 是 | 是否成功 |
+| `videos` | array | 是 | 推荐视频列表，按 `likes_count` 降序，已观看视频被排除；可为空数组 |
+| `allViewed` | boolean | 是 | `videos` 为空时为 `true`，表示当前用户已看完所有可推荐视频 |
+| `totalCount` | number | 是 | 数据库中视频总数（**含**已观看） |
+| `message` | string | 否 | 失败时错误说明 |
+
+### `videos[]` 单项字段
+
+| 字段 | 类型 | 说明 | 前端用途 |
+| --- | --- | --- | --- |
+| `id` | number | 视频主键 | 播放、上报观看 |
+| `user_id` | number | 发布者用户 ID | 判断是否本人发布 |
+| `title` | string | 标题 | F01 播放区标题 |
+| `description` | string | 描述 | 可选副文案 |
+| `video_url` | string | 视频 URL（绝对路径或 `/uploads/...`） | `<video src>` |
+| `cover_url` | string | 封面 URL | 封面图 |
+| `likes_count` | number | 点赞总数（兼容字段，同 `likeCount`） | F01 / F04 展示 |
+| `likeCount` | number | **规范字段**：点赞总数 | F01 / F04 展示 |
+| `liked` | boolean | **规范字段**：当前用户是否已赞 | F04 点赞按钮状态 |
+| `is_liked` | `0` \| `1` | 兼容字段，`liked` 的整型别名 | F04 |
+| `created_at` | string (ISO-8601) | 创建时间 | 可选 |
+| `creator_name` | string | 发布者用户名 | F01 作者展示 |
+
+### 错误码
+
+| 状态码 | 说明 |
+| --- | --- |
+| `200` | 查询成功 |
+| `401` | 未登录或 Token 无效 |
+| `500` | 服务端查询异常 |
+
+### 业务规则
+
+- 排除当前用户在 `views` 表中已有记录的视频。
+- 按 `likes_count` **降序**排列。
+- 每条视频包含 `liked` / `likeCount`（与组员 B 的 F04 字段约定），供点赞状态回显。
+
+### F03 与推荐接口的关系
+
+F03（上下切换视频）**没有独立的 REST 接口**。切换时前后端只约定以下接口协作：
+
+| 时机 | 接口 | 说明 |
+| --- | --- | --- |
+| 进入推荐流 / 刷新列表 | `GET /api/v1/videos/recommendations` | 一次性获取未看视频列表，切换本身不重复调用 |
+| 切换到新视频并开始播放后 | `POST /api/v1/videos/{id}/views` | 上报当前视频 ID，用于观看去重 |
+| 重置后重新推荐 | `DELETE /api/v1/users/me/views` → `GET /api/v1/videos/recommendations` | 清空历史后重新拉列表 |
+
+不提供 `GET /feed/next`、`GET /feed/prev` 等切换专用路径。
+
+---
+
+## 标记视频已观看（F02）
+
+- 接口说明：记录当前用户对指定视频的观看历史，已观看视频不再出现在推荐流中。同一用户对同一视频重复调用具有幂等性。
+- 请求方法：`POST`
+- 请求路径：`/api/v1/videos/{id}/views`
+- 是否需要登录：`是`
+
+
+### Path 参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `id` | `Long` | 是 | 视频 ID |
+
+### 请求示例
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/videos/2/views" \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+### 成功响应 `200 OK`
+
+```json
+{
+  "success": true,
+  "message": "Video marked as viewed."
+}
+```
+
+### 失败响应
+
+`401 Unauthorized`
+
+```json
+{
+  "success": false,
+  "message": "Access Denied: Missing or malformed Authorization header."
+}
+```
+
+`404 Not Found`
+
+```json
+{
+  "success": false,
+  "message": "Video not found."
+}
+```
+
+`500 Internal Server Error`
+
+```json
+{
+  "success": false,
+  "message": "Error marking video as viewed: <detail>"
+}
+```
+
+### 幂等性
+
+- 同一用户对同一视频重复调用 **不会重复插入** 观看记录。
+- 应用层先通过 `existsByUserIdAndVideoId` 判断；数据库 `views` 表有 `(user_id, video_id)` 唯一约束兜底。
+- 已存在记录时仍返回 `200 OK` 和 `"Video marked as viewed."`。
+
+### 触发时机
+
+- 用户在推荐流中切换到新视频并开始播放后调用；登录后首次拉列表 **不** 调用。
+- 调用成功后，该视频在下次 `GET recommendations` 时不再返回；当前已拉取的列表不会自动剔除该条目。
+
+### 错误码
+
+| 状态码 | 说明 |
+| --- | --- |
+| `200` | 标记成功（含幂等重复调用） |
+| `401` | 未登录或 Token 无效 |
+| `404` | 视频不存在 |
+| `500` | 服务端写入异常 |
+
+---
+
+## 重置观看记录（F02）
+
+- 接口说明：清空当前登录用户的全部观看历史，使所有视频重新进入推荐池。用于调试或「全部看完」后的重置入口。
+- 请求方法：`DELETE`
+- 请求路径：`/api/v1/users/me/views`
+- 是否需要登录：`是`
+
+
+### 请求示例
+
+```bash
+curl -X DELETE "http://localhost:8080/api/v1/users/me/views" \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+### 成功响应 `200 OK`
+
+```json
+{
+  "success": true,
+  "message": "Your watch history has been reset. All videos can be recommended again!"
+}
+```
+
+### 失败响应
+
+`401 Unauthorized`
+
+```json
+{
+  "success": false,
+  "message": "Access Denied: Missing or malformed Authorization header."
+}
+```
+
+`500 Internal Server Error`
+
+```json
+{
+  "success": false,
+  "message": "Error resetting watch history: <detail>"
+}
+```
+
+### 异常场景
+
+| 场景 | 预期 |
+| --- | --- |
+| 未登录调用 | 返回 `401` |
+| 重置后重新拉推荐 | `GET recommendations` 恢复完整列表 |
+| 观看后去重 | 已 `POST views` 的视频不再出现在 `videos` 中 |
+| 全部看完空态 | 前端展示「推荐已看完」，引导用户点击重置 |
+
+### 错误码
+
+| 状态码 | 说明 |
+| --- | --- |
+| `200` | 重置成功 |
+| `401` | 未登录或 Token 无效 |
+| `500` | 服务端删除异常 |
+
+### 备注
+
+- 仅删除**当前登录用户**在 `views` 表中的记录，不影响其他用户。
+- 重置后推荐流按点赞数重新排序返回。
+
+---
+
 ## 视频点赞 / 取消点赞（F04）
 
 - 接口说明：对指定视频切换点赞状态。若当前用户未点赞则创建点赞记录并 `likeCount + 1`；若已点赞则取消点赞并 `likeCount - 1`。同一用户对同一视频不会重复写入点赞记录。

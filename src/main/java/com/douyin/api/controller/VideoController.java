@@ -9,6 +9,11 @@ import com.douyin.api.repository.UserRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
 import com.douyin.api.util.VideoResponseMapper;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -53,6 +58,12 @@ public class VideoController {
 
     // Get Recommended Videos (Exclude viewed, order by likes count DESC)
     @GetMapping("/videos/recommendations")
+    @Tag(name = "F02/F03 推荐流", description = "组员 A：推荐列表与切换数据")
+    @Operation(summary = "获取推荐视频列表（F02）", description = "排除已观看视频，按 likeCount 降序。F03 前端本地切换索引，不单独请求 next/prev。")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "成功返回 videos、allViewed、totalCount"),
+            @ApiResponse(responseCode = "401", description = "未登录")
+    })
     public ResponseEntity<Map<String, Object>> getRecommendations(HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         Map<String, Object> response = new HashMap<>();
@@ -83,7 +94,15 @@ public class VideoController {
 
     // Record Video View (Visited - prevents from being recommended again)
     @PostMapping("/videos/{id}/views")
-    public ResponseEntity<Map<String, Object>> recordView(@PathVariable("id") Long videoId, HttpServletRequest request) {
+    @Tag(name = "F02/F03 推荐流", description = "组员 A：推荐列表与切换数据")
+    @Operation(summary = "标记视频已观看（F02 去重）", description = "播放成功后写入 views 表；同一用户同一视频幂等。")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "成功"),
+            @ApiResponse(responseCode = "404", description = "视频不存在")
+    })
+    public ResponseEntity<Map<String, Object>> recordView(
+            @Parameter(description = "视频 ID") @PathVariable("id") Long videoId,
+            HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         Map<String, Object> response = new HashMap<>();
 
@@ -111,6 +130,9 @@ public class VideoController {
 
     // Reset watch history
     @DeleteMapping("/users/me/views")
+    @Tag(name = "F02/F03 推荐流", description = "组员 A：推荐列表与切换数据")
+    @Operation(summary = "重置当前用户观看记录（F02 调试）", description = "清空 views 表后所有视频可再次推荐。")
+    @ApiResponse(responseCode = "200", description = "重置成功")
     public ResponseEntity<Map<String, Object>> resetViews(HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         Map<String, Object> response = new HashMap<>();
