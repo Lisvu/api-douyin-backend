@@ -143,49 +143,42 @@ public class VideoController {
         Map<String, Object> response = new HashMap<>();
 
         try {
-            Optional<Video> optionalVideo = videoRepository.findById(videoId);
-            if (optionalVideo.isEmpty()) {
+            // 1. Check video exists and get current likesCount (1 scalar query, no entity loaded)
+            Integer currentLikes = videoRepository.findLikesCountById(videoId).orElse(null);
+            if (currentLikes == null) {
                 response.put("success", false);
                 response.put("message", "Video not found.");
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
             }
 
-            Video video = optionalVideo.get();
+            // 2. Check if already liked (1 query)
             Optional<Like> optionalLike = likeRepository.findByUserIdAndVideoId(userId, videoId);
 
             if (optionalLike.isPresent()) {
+                // Unlike
                 likeRepository.delete(optionalLike.get());
-                video.setLikesCount(Math.max(0, video.getLikesCount() - 1));
-                videoRepository.save(video);
+                videoRepository.incrementLikesCount(videoId, -1);
 
                 response.put("success", true);
                 response.put("message", "Video unliked.");
-                VideoResponseMapper.putLikeFields(response, false, video.getLikesCount());
+                VideoResponseMapper.putLikeFields(response, false, Math.max(0, currentLikes - 1));
             } else {
-                Like like = new Like(userId, videoId);
-                likeRepository.save(like);
-
-                video.setLikesCount(video.getLikesCount() + 1);
-                videoRepository.save(video);
+                // Like
+                likeRepository.save(new Like(userId, videoId));
+                videoRepository.incrementLikesCount(videoId, 1);
 
                 response.put("success", true);
                 response.put("message", "Video liked!");
-                VideoResponseMapper.putLikeFields(response, true, video.getLikesCount());
+                VideoResponseMapper.putLikeFields(response, true, currentLikes + 1);
             }
 
             return ResponseEntity.ok(response);
         } catch (DataIntegrityViolationException duplicateLike) {
             // Concurrent duplicate like: unique (user_id, video_id) already exists
-            Video video = videoRepository.findById(videoId).orElse(null);
-            if (video == null) {
-                response.put("success", false);
-                response.put("message", "Video not found.");
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
-            }
-
+            Integer currentLikes = videoRepository.findLikesCountById(videoId).orElse(0);
             response.put("success", true);
             response.put("message", "Video already liked.");
-            VideoResponseMapper.putLikeFields(response, true, video.getLikesCount());
+            VideoResponseMapper.putLikeFields(response, true, currentLikes);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             response.put("success", false);
