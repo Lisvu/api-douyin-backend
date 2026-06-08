@@ -15,6 +15,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -215,6 +217,7 @@ public class VideoController {
 
     // Publish Video (accepts video file, optional cover file, title and description)
     @PostMapping("/videos")
+    @CacheEvict(value = "userVideos", allEntries = true)
     public ResponseEntity<Map<String, Object>> publishVideo(
             @RequestParam("title") String title,
             @RequestParam(value = "description", required = false) String description,
@@ -311,6 +314,7 @@ public class VideoController {
 
     // View My Videos (Paginated)
     @GetMapping("/users/me/videos")
+    @Cacheable(value = "userVideos", key = "#request.getAttribute('userId') + '-' + #page")
     public ResponseEntity<Map<String, Object>> getMyVideos(
             @RequestParam(value = "page", defaultValue = "1") int page,
             @RequestParam(value = "limit", defaultValue = "6") int limit,
@@ -359,6 +363,7 @@ public class VideoController {
     // Delete My Video (owner permission checking)
     @DeleteMapping("/videos/{id}")
     @Transactional
+    @CacheEvict(value = "userVideos", allEntries = true)
     public ResponseEntity<Map<String, Object>> deleteVideo(
             @PathVariable("id") Long videoId,
             HttpServletRequest request) {

@@ -11,6 +11,8 @@ import com.douyin.api.repository.UserRelationRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,6 +55,7 @@ public class UserController {
     }
 
     @GetMapping("/me")
+    @Cacheable(value = "users", key = "#request.getAttribute('userId')")
     public ResponseEntity<Map<String, Object>> getCurrentUser(HttpServletRequest request) {
         User user = getCurrentUserOrThrow(request);
 
@@ -64,6 +67,7 @@ public class UserController {
 
     @DeleteMapping("/me")
     @Transactional
+    @CacheEvict(value = "users", key = "#request.getAttribute('userId')")
     public ResponseEntity<Map<String, Object>> deleteAccount(HttpServletRequest request) {
         User user = getCurrentUserOrThrow(request);
         Long userId = user.getId();

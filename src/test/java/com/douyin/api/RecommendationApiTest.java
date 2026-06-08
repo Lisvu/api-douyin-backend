@@ -18,6 +18,9 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+
+import org.springframework.data.domain.Pageable;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -68,10 +71,9 @@ class RecommendationApiTest {
 
     @Test
     void getRecommendationsReturnsVideosSortedByLikesExcludingViewed() throws Exception {
-        when(videoRepository.findRecommendedVideosForUser(1L)).thenReturn(List.of(topVideo, secondVideo));
+        when(videoRepository.findRecommendedVideosForUser(eq(1L), any(Pageable.class))).thenReturn(List.of(topVideo, secondVideo));
         when(videoRepository.count()).thenReturn(6L);
-        when(likeRepository.existsByUserIdAndVideoId(1L, 2L)).thenReturn(false);
-        when(likeRepository.existsByUserIdAndVideoId(1L, 4L)).thenReturn(true);
+        when(likeRepository.findLikedVideoIds(eq(1L), any())).thenReturn(Set.of(4L));
 
         mockMvc.perform(get("/api/v1/videos/recommendations").requestAttr("userId", 1L))
                 .andExpect(status().isOk())
@@ -88,7 +90,7 @@ class RecommendationApiTest {
 
     @Test
     void getRecommendationsReturnsAllViewedWhenListEmpty() throws Exception {
-        when(videoRepository.findRecommendedVideosForUser(1L)).thenReturn(List.of());
+        when(videoRepository.findRecommendedVideosForUser(eq(1L), any(Pageable.class))).thenReturn(List.of());
         when(videoRepository.count()).thenReturn(6L);
 
         mockMvc.perform(get("/api/v1/videos/recommendations").requestAttr("userId", 1L))
