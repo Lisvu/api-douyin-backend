@@ -88,7 +88,57 @@ SELECT * FROM users;
 exit
 ```
 
-## 完整示例
+## 本机启动 Spring Boot（必看）
+
+后端配置在 `src/main/resources/application.properties`，数据库地址为：
+
+```properties
+spring.datasource.url=jdbc:postgresql://127.0.0.1:5432/api
+spring.datasource.username=api_app
+```
+
+这表示程序连接**本机 5432 端口**，再通过 SSH 隧道转发到服务器上的 PostgreSQL。**不能**在本机直接写 `165.232.172.99:5432`（多数同学公网 IP 会被 `pg_hba` 拒绝）。
+
+### 步骤（以 `nengen` 为例）
+
+**终端 A（一直保持打开，不要关）：**
+
+```bash
+ssh -L 5432:127.0.0.1:5432 nengen@165.232.172.99
+```
+
+输入文档「服务器登录账号」表中 **nengen** 的密码，直到出现 `nengen@api-project:~$`。
+
+**终端 B（启动后端）：**
+
+```powershell
+cd E:\api-douyin\api-douyin-backend
+$env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot"
+mvn spring-boot:run
+```
+
+看到 `Started ApiDouyinApplication` 即表示数据库已连通。
+
+**可选：检查隧道是否生效（PowerShell）：**
+
+```powershell
+Test-NetConnection 127.0.0.1 -Port 5432
+```
+
+`TcpTestSucceeded` 为 `True` 时再启动后端。
+
+### 在服务器上跑后端时
+
+若直接在服务器里执行 `mvn spring-boot:run`，保持 `127.0.0.1:5432` 即可（数据库与后端在同一台机器）。
+
+## 完整示例（SSH 登录后查库）
+
+以 `nengen` 为例：
+
+```bash
+ssh nengen@165.232.172.99
+psql -d api
+```
 
 以 `yunqi` 为例：
 
@@ -112,6 +162,22 @@ exit
 ```
 
 ## 常见错误
+
+### Connection to 127.0.0.1:5432 refused（启动后端时报错）
+
+说明 **SSH 隧道未建立或已断开**。
+
+处理：
+
+1. 重新执行 `ssh -L 5432:127.0.0.1:5432 nengen@165.232.172.99`（用户名换成自己的）。
+2. 确认 `Test-NetConnection 127.0.0.1 -Port 5432` 为 `True`。
+3. 再执行 `mvn spring-boot:run`。
+
+日志里若出现 `Unable to determine Dialect without JDBC metadata`，也是数据库连不上导致的，先按上面步骤修隧道。
+
+### no pg_hba.conf entry for host "你的公网IP"
+
+说明未走隧道，程序在直连远程库。请使用 `127.0.0.1:5432` + SSH 隧道，不要改回 `165.232.172.99:5432`（除非在服务器本机跑后端）。
 
 ### Connection closed by 165.232.172.99 port 22
 
