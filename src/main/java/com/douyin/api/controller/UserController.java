@@ -125,7 +125,7 @@ public class UserController {
 
     private void deleteIfLocalUpload(String url) {
         if (url != null && url.startsWith("/uploads/")) {
-            File file = new File("./public" + url);
+            File file = new File(System.getProperty("user.dir"), "public" + url);
             if (file.exists()) {
                 file.delete();
             }

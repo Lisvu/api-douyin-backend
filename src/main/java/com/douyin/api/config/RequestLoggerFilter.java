@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 @Component
 public class RequestLoggerFilter implements Filter {
@@ -76,20 +77,22 @@ public class RequestLoggerFilter implements Filter {
                         traceId, method, url, status, duration,
                         userId, getClientIp(httpRequest));
 
-                // 3. 持久化到数据库（唯一存储）
-                try {
-                    RequestLog entity = new RequestLog();
-                    entity.setMethod(method);
-                    entity.setUrl(url);
-                    entity.setStatusCode(status);
-                    entity.setDurationMs(duration);
-                    entity.setRequestBody(reqBody);
-                    entity.setResponseBody(resBody);
-                    entity.setTimestamp(LocalDateTime.now());
-                    requestLogRepository.save(entity);
-                } catch (Exception e) {
-                    log.error("Failed to save request log: {}", e.getMessage());
-                }
+                // 3. 异步持久化到数据库（不阻塞请求响应）
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        RequestLog entity = new RequestLog();
+                        entity.setMethod(method);
+                        entity.setUrl(url);
+                        entity.setStatusCode(status);
+                        entity.setDurationMs(duration);
+                        entity.setRequestBody(reqBody);
+                        entity.setResponseBody(resBody);
+                        entity.setTimestamp(LocalDateTime.now());
+                        requestLogRepository.save(entity);
+                    } catch (Exception e) {
+                        log.error("Failed to save request log: {}", e.getMessage());
+                    }
+                });
             }
 
             wrappedResponse.copyBodyToResponse();

@@ -53,18 +53,26 @@ public class VideoController {
 
     // Get Recommended Videos (Exclude viewed, order by likes count DESC)
     @GetMapping("/videos/recommendations")
-    public ResponseEntity<Map<String, Object>> getRecommendations(HttpServletRequest request) {
+    public ResponseEntity<Map<String, Object>> getRecommendations(
+            @RequestParam(value = "limit", defaultValue = "20") int limit,
+            HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         Map<String, Object> response = new HashMap<>();
 
         try {
-            // Get all recommended videos for user
-            List<Video> rawVideos = videoRepository.findRecommendedVideosForUser(userId);
+            // Fetch videos with pagination to avoid loading all at once
+            List<Video> rawVideos = videoRepository.findRecommendedVideosForUser(userId, PageRequest.of(0, limit));
             long totalVideosCount = videoRepository.count();
+
+            // Batch query: get all liked video IDs in a single DB round-trip
+            List<Long> videoIds = rawVideos.stream().map(Video::getId).toList();
+            Set<Long> likedVideoIds = videoIds.isEmpty()
+                    ? Collections.emptySet()
+                    : likeRepository.findLikedVideoIds(userId, videoIds);
 
             List<Map<String, Object>> mappedVideos = new ArrayList<>();
             for (Video v : rawVideos) {
-                boolean liked = likeRepository.existsByUserIdAndVideoId(userId, v.getId());
+                boolean liked = likedVideoIds.contains(v.getId());
                 mappedVideos.add(VideoResponseMapper.toFeedItem(v, liked));
             }
 
@@ -223,9 +231,10 @@ public class VideoController {
             }
             User user = optionalUser.get();
 
-            // Set up save directories
-            File videoDir = new File("./public/uploads/videos/");
-            File coverDir = new File("./public/uploads/covers/");
+            // Set up save directories (absolute path to avoid Tomcat temp dir issues)
+            String basePath = System.getProperty("user.dir");
+            File videoDir = new File(basePath, "public/uploads/videos/");
+            File coverDir = new File(basePath, "public/uploads/covers/");
 
             if (!videoDir.exists()) videoDir.mkdirs();
             if (!coverDir.exists()) coverDir.mkdirs();
@@ -270,9 +279,11 @@ public class VideoController {
 
             videoRepository.save(video);
 
+            Map<String, Object> videoData = VideoResponseMapper.toFeedItem(video, false);
+
             response.put("success", true);
             response.put("message", "Video published successfully!");
-            response.put("video", video);
+            response.put("data", videoData);
 
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
 
@@ -300,9 +311,15 @@ public class VideoController {
         try {
             Page<Video> videoPage = videoRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable);
 
+            // Batch query: get all liked video IDs in a single DB round-trip
+            List<Long> videoIds = videoPage.getContent().stream().map(Video::getId).toList();
+            Set<Long> likedVideoIds = videoIds.isEmpty()
+                    ? Collections.emptySet()
+                    : likeRepository.findLikedVideoIds(userId, videoIds);
+
             List<Map<String, Object>> mappedVideos = new ArrayList<>();
             for (Video video : videoPage.getContent()) {
-                boolean liked = likeRepository.existsByUserIdAndVideoId(userId, video.getId());
+                boolean liked = likedVideoIds.contains(video.getId());
                 mappedVideos.add(VideoResponseMapper.toFeedItem(video, liked));
             }
 
@@ -371,7 +388,7 @@ public class VideoController {
     private void deleteLocalFile(String url, String expectedPrefix) {
         if (url == null || !url.startsWith(expectedPrefix)) return;
         try {
-            java.nio.file.Path path = java.nio.file.Paths.get("./public" + url);
+            java.nio.file.Path path = java.nio.file.Paths.get(System.getProperty("user.dir"), "public" + url);
             boolean deleted = java.nio.file.Files.deleteIfExists(path);
             if (!deleted) {
                 log.warn("File not found, skip delete: {}", path);

@@ -35,14 +35,15 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        // Ensure the upload directory exists
-        File uploadDir = new File("./public/uploads/");
+        // Ensure the upload directory exists (absolute path)
+        String basePath = System.getProperty("user.dir");
+        File uploadDir = new File(basePath, "public/uploads/");
         if (!uploadDir.exists()) {
             uploadDir.mkdirs();
         }
-        
+
         // Map URL /uploads/** to directory ./public/uploads/
         registry.addResourceHandler("/uploads/**")
-                .addResourceLocations("file:./public/uploads/");
+                .addResourceLocations("file:" + uploadDir.getAbsolutePath() + "/");
     }
 }

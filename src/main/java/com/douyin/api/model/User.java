@@ -1,5 +1,6 @@
 package com.douyin.api.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
@@ -14,6 +15,7 @@ public class User {
     @Column(unique = true, nullable = false, length = 32)
     private String username;
 
+    @JsonIgnore
     @Column(name = "password_hash", nullable = false, columnDefinition = "text")
     private String password;
 
