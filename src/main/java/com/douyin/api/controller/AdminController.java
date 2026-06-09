@@ -1,5 +1,7 @@
 package com.douyin.api.controller;
 
+import com.douyin.api.model.User;
+import com.douyin.api.model.Video;
 import com.douyin.api.repository.CommentRepository;
 import com.douyin.api.repository.FavoriteRepository;
 import com.douyin.api.repository.LikeRepository;
@@ -14,6 +16,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.format.DateTimeFormatter;
@@ -104,6 +107,48 @@ public class AdminController {
         response.put("limit", safeLimit);  // 返回实际使用的 limit，方便前端知道限制
 
         redisCacheService.put(cacheKey, response, LOGS_TTL);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/public-samples/redistribute-owners")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> redistributePublicSampleOwners() {
+        Map<String, Object> response = new LinkedHashMap<>();
+
+        List<User> realUsers = userRepository.findAll().stream()
+                .filter(user -> !"douyin_creator".equals(user.getUsername()))
+                .sorted(Comparator.comparing(User::getId))
+                .toList();
+
+        if (realUsers.isEmpty()) {
+            response.put("success", false);
+            response.put("message", "No real users found. Register at least one user before redistributing public samples.");
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        List<Video> publicSamples = videoRepository.findByTitleStartingWithOrderByIdAsc("公开视频素材");
+        if (publicSamples.isEmpty()) {
+            response.put("success", false);
+            response.put("message", "No public sample videos found.");
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        Map<String, Integer> distribution = new LinkedHashMap<>();
+        for (int i = 0; i < publicSamples.size(); i++) {
+            User owner = realUsers.get(i % realUsers.size());
+            publicSamples.get(i).setUser(owner);
+            distribution.merge(owner.getUsername(), 1, Integer::sum);
+        }
+
+        videoRepository.saveAll(publicSamples);
+        redisCacheService.evictPrefix("recommendations:");
+        redisCacheService.evict("admin:stats");
+
+        response.put("success", true);
+        response.put("message", "Public sample video owners redistributed.");
+        response.put("videoCount", publicSamples.size());
+        response.put("userCount", realUsers.size());
+        response.put("distribution", distribution);
         return ResponseEntity.ok(response);
     }
 

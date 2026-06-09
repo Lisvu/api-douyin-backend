@@ -18,6 +18,8 @@ public interface VideoRepository extends JpaRepository<Video, Long> {
 
     List<Video> findByUserId(Long userId);
 
+    List<Video> findByTitleStartingWithOrderByIdAsc(String titlePrefix);
+
     // Find all videos by a specific user with pagination, ordered by creation date descending
     @EntityGraph(attributePaths = {"user"})
     Page<Video> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);

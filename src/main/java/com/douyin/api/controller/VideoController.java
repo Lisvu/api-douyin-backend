@@ -45,6 +45,28 @@ public class VideoController {
     private final ViewRepository viewRepository;
     private final RedisCacheService redisCacheService;
     private static final Duration RECOMMENDATIONS_TTL = Duration.ofSeconds(30);
+    private static final int MAX_PUBLIC_SAMPLE_IMPORT_COUNT = 100;
+    private static final String[] PUBLIC_SAMPLE_VIDEO_URLS = {
+            "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+            "https://media.w3.org/2010/05/sintel/trailer.mp4",
+            "https://media.w3.org/2010/05/bunny/trailer.mp4",
+            "https://www.w3schools.com/html/mov_bbb.mp4",
+            "https://www.w3school.com.cn/i/movie.mp4",
+            "https://sf1-cdn-tos.huoshanstatic.com/obj/media-fe/xgplayer_doc_video/mp4/xgplayer-demo-360p.mp4",
+            "https://qiniu-web-assets.dcloud.net.cn/unidoc/zh/uni-app-video-courses.mp4",
+            "https://sdk-release.qnsdk.com/1080_60_5000k.mp4",
+            "https://sdk-release.qnsdk.com/2K_60_6048k.mp4",
+            "https://sdk-release.qnsdk.com/mp4.mp4",
+            "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+            "https://samplelib.com/lib/preview/mp4/sample-10s.mp4",
+            "https://samplelib.com/lib/preview/mp4/sample-15s.mp4",
+            "https://samplelib.com/lib/preview/mp4/sample-20s.mp4",
+            "https://samplelib.com/lib/preview/mp4/sample-30s.mp4"
+    };
+    private static final String[] PUBLIC_SAMPLE_TOPICS = {
+            "城市夜景", "自然风光", "运动瞬间", "旅行记录", "美食探店",
+            "科技演示", "学习日常", "音乐节奏", "生活片段", "创意剪辑"
+    };
     private static final org.slf4j.Logger log =
             org.slf4j.LoggerFactory.getLogger(VideoController.class);
 
@@ -113,6 +135,44 @@ public class VideoController {
             response.put("message", "Error compiling recommendations: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
+    }
+
+    @PostMapping("/videos/public-samples")
+    @Transactional
+    @CacheEvict(value = "userVideos", allEntries = true)
+    public ResponseEntity<Map<String, Object>> importPublicSampleVideos(
+            @RequestParam(value = "count", defaultValue = "100") int count,
+            HttpServletRequest request) {
+
+        Long userId = (Long) request.getAttribute("userId");
+        Map<String, Object> response = new HashMap<>();
+
+        if (count < 1) {
+            response.put("success", false);
+            response.put("message", "Import count must be at least 1.");
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        int importCount = Math.min(count, MAX_PUBLIC_SAMPLE_IMPORT_COUNT);
+
+        Optional<User> optionalUser = userRepository.findById(userId);
+        if (optionalUser.isEmpty()) {
+            response.put("success", false);
+            response.put("message", "User session invalid.");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+        }
+
+        int startIndex = (int) videoRepository.count();
+        List<Video> videos = createPublicSampleVideos(optionalUser.get(), startIndex, importCount);
+        videoRepository.saveAll(videos);
+        redisCacheService.evictPrefix("recommendations:");
+        redisCacheService.evict("admin:stats");
+
+        response.put("success", true);
+        response.put("message", "Public sample videos imported successfully.");
+        response.put("importedCount", videos.size());
+        response.put("ownerUserId", userId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     // Record Video View (Visited - prevents from being recommended again)
@@ -446,6 +506,26 @@ public class VideoController {
         int lastDotIndex = originalFilename.lastIndexOf('.');
         if (lastDotIndex == -1) return fallback;
         return originalFilename.substring(lastDotIndex).toLowerCase();
+    }
+
+    private List<Video> createPublicSampleVideos(User creator, int startIndex, int count) {
+        List<Video> videos = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            int sequence = startIndex + i + 1;
+            String topic = PUBLIC_SAMPLE_TOPICS[sequence % PUBLIC_SAMPLE_TOPICS.length];
+
+            Video video = new Video();
+            video.setUser(creator);
+            video.setTitle(String.format("公开视频素材 %03d - %s", sequence, topic));
+            video.setDescription(String.format(
+                    "由当前登录用户导入的公开视频素材。#%s #公开视频 #推荐系统 #样本%03d",
+                    topic, sequence));
+            video.setVideoUrl(PUBLIC_SAMPLE_VIDEO_URLS[sequence % PUBLIC_SAMPLE_VIDEO_URLS.length]);
+            video.setCoverUrl("https://picsum.photos/seed/douyin-public-video-" + sequence + "/600/800");
+            video.setLikesCount((sequence * 37) % 900 + 20);
+            videos.add(video);
+        }
+        return videos;
     }
 
     private String recommendationsCacheKey(Long userId, int limit) {
