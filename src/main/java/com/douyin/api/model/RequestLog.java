@@ -32,6 +32,16 @@ public class RequestLog {
     @Column(name = "timestamp", nullable = false)
     private LocalDateTime timestamp;
 
+    @Column(name = "trace_id", length = 32)
+    private String traceId;
+
+    @Column(name = "user_id")
+    private Long userId;
+
+    @Column(name = "user_ip", length = 45)
+    private String userIp;
+
+
     // Getters and Setters
     public Long getId() { return id; }
     public String getMethod() { return method; }
@@ -48,4 +58,10 @@ public class RequestLog {
     public void setResponseBody(String responseBody) { this.responseBody = responseBody; }
     public LocalDateTime getTimestamp() { return timestamp; }
     public void setTimestamp(LocalDateTime timestamp) { this.timestamp = timestamp; }
+    public String getTraceId() { return traceId; }
+    public void setTraceId(String traceId) { this.traceId = traceId; }
+    public Long getUserId() { return userId; }
+    public void setUserId(Long userId) { this.userId = userId; }
+    public String getUserIp() { return userIp; }
+    public void setUserIp(String userIp) { this.userIp = userIp; }
 }

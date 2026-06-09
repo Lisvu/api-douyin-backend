@@ -77,7 +77,8 @@ public class RequestLoggerFilter implements Filter {
                         userId, getClientIp(httpRequest));
 
                 // 3. 异步持久化到数据库（不阻塞请求响应）
-                saveRequestLogAsync(method, url, status, duration, reqBody, resBody);
+                saveRequestLogAsync(method, url, status, duration, reqBody, resBody,
+                        traceId, userId, getClientIp(httpRequest));
             }
 
             wrappedResponse.copyBodyToResponse();
@@ -89,10 +90,13 @@ public class RequestLoggerFilter implements Filter {
                                      int status,
                                      long duration,
                                      String reqBody,
-                                     String resBody) {
+                                     String resBody,
+                                     String traceId,
+                                     Long userId,
+                                     String userIp) {
         CompletableFuture.runAsync(() -> {
             try {
-                RequestLog entity = new RequestLog();
+                com.douyin.api.model.RequestLog entity = new com.douyin.api.model.RequestLog();
                 entity.setMethod(method);
                 entity.setUrl(url);
                 entity.setStatusCode(status);
@@ -100,6 +104,9 @@ public class RequestLoggerFilter implements Filter {
                 entity.setRequestBody(reqBody);
                 entity.setResponseBody(resBody);
                 entity.setTimestamp(LocalDateTime.now());
+                entity.setTraceId(traceId);
+                entity.setUserId(userId);
+                entity.setUserIp(userIp);
                 requestLogRepository.save(entity);
             } catch (Exception e) {
                 log.error("Failed to save request log: {}", e.getMessage());
