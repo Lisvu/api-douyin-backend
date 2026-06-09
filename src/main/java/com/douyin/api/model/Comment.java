@@ -23,18 +23,12 @@ public class Comment {
     @Column(nullable = false, columnDefinition = "text")
     private String content;
 
-    @Column(nullable = false, length = 20)
-    private String status = "visible";
-
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
-        if (status == null || status.isBlank()) {
-            status = "visible";
-        }
     }
 
     public Long getId() {
@@ -75,14 +69,6 @@ public class Comment {
 
     public void setContent(String content) {
         this.content = content;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
     }
 
     public LocalDateTime getCreatedAt() {

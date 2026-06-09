@@ -10,6 +10,7 @@ import com.douyin.api.repository.UserRepository;
 import com.douyin.api.repository.UserRelationRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
+import com.douyin.api.service.RedisCacheService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
@@ -22,13 +23,16 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.File;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/v1/users")
 public class UserController {
+    private static final Duration USER_PROFILE_TTL = Duration.ofMinutes(5);
 
     private final UserRepository userRepository;
     private final VideoRepository videoRepository;
@@ -37,6 +41,7 @@ public class UserController {
     private final FavoriteRepository favoriteRepository;
     private final CommentRepository commentRepository;
     private final UserRelationRepository userRelationRepository;
+    private final RedisCacheService redisCacheService;
 
     public UserController(UserRepository userRepository,
                           VideoRepository videoRepository,
@@ -44,7 +49,8 @@ public class UserController {
                           ViewRepository viewRepository,
                           FavoriteRepository favoriteRepository,
                           CommentRepository commentRepository,
-                          UserRelationRepository userRelationRepository) {
+                          UserRelationRepository userRelationRepository,
+                          RedisCacheService redisCacheService) {
         this.userRepository = userRepository;
         this.videoRepository = videoRepository;
         this.likeRepository = likeRepository;
@@ -52,16 +58,29 @@ public class UserController {
         this.favoriteRepository = favoriteRepository;
         this.commentRepository = commentRepository;
         this.userRelationRepository = userRelationRepository;
+        this.redisCacheService = redisCacheService;
     }
 
     @GetMapping("/me")
     @Cacheable(value = "users", key = "#request.getAttribute('userId')")
     public ResponseEntity<Map<String, Object>> getCurrentUser(HttpServletRequest request) {
-        User user = getCurrentUserOrThrow(request);
+        Long userId = (Long) request.getAttribute("userId");
+        if (userId == null) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "User context is missing.");
+        }
 
+        String cacheKey = userProfileCacheKey(userId);
+        Optional<Map<String, Object>> cached = redisCacheService.getMap(cacheKey);
+        if (cached.isPresent()) {
+            return ResponseEntity.ok(cached.get());
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "User session is invalid."));
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("user", userToMap(user));
+        redisCacheService.put(cacheKey, response, USER_PROFILE_TTL);
         return ResponseEntity.ok(response);
     }
 
@@ -93,6 +112,10 @@ public class UserController {
         }
 
         userRepository.deleteById(userId);
+        redisCacheService.evictPrefix("recommendations:");
+        redisCacheService.evict(userProfileCacheKey(userId));
+        redisCacheService.evict("auth:user:" + user.getUsername());
+        redisCacheService.evict("admin:stats");
 
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
@@ -117,9 +140,13 @@ public class UserController {
         userData.put("avatarUrl", user.getAvatarUrl());
         userData.put("bio", user.getBio());
         userData.put("status", user.getStatus());
-        userData.put("createdAt", user.getCreatedAt());
-        userData.put("updatedAt", user.getUpdatedAt());
+        userData.put("createdAt", user.getCreatedAt() == null ? null : user.getCreatedAt().toString());
+        userData.put("updatedAt", user.getUpdatedAt() == null ? null : user.getUpdatedAt().toString());
         return userData;
+    }
+
+    private String userProfileCacheKey(Long userId) {
+        return "user:profile:" + userId;
     }
 
     private void deleteLocalFilesForVideo(Video video) {

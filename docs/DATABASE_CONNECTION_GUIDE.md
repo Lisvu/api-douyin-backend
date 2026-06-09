@@ -161,6 +161,135 @@ SELECT * FROM users;
 exit
 ```
 
+## 后端启动时自动连接数据库
+
+后端已经配置为启动时自动准备本地 SSH 隧道：
+
+```bash
+mvn spring-boot:run
+```
+
+启动时应用会先检查本地 `127.0.0.1:15432` 是否能连接 PostgreSQL。如果不能连接，会用配置里的服务器账号和密码自动打开内置 SSH 隧道，效果等价于：
+
+```bash
+ssh -N -L 15432:127.0.0.1:5432 你的服务器账号@165.232.172.99
+```
+
+后端数据库连接地址是：
+
+```properties
+spring.datasource.url=jdbc:postgresql://127.0.0.1:15432/api
+```
+
+### 每个人需要修改自己的服务器账号配置
+
+打开项目中的配置文件：
+
+```text
+src/main/resources/application.properties
+```
+
+找到下面这几行：
+
+```properties
+app.ssh-tunnel.enabled=true
+app.ssh-tunnel.ssh-host=165.232.172.99
+app.ssh-tunnel.ssh-port=22
+app.ssh-tunnel.ssh-username=root
+app.ssh-tunnel.ssh-password=chenru
+app.ssh-tunnel.local-host=127.0.0.1
+app.ssh-tunnel.local-port=15432
+app.ssh-tunnel.remote-host=127.0.0.1
+app.ssh-tunnel.remote-port=5432
+```
+
+把 `app.ssh-tunnel.ssh-username` 和 `app.ssh-tunnel.ssh-password` 改成自己的服务器账号和密码。例如 `yunqi`：
+
+```properties
+app.ssh-tunnel.ssh-username=yunqi
+app.ssh-tunnel.ssh-password=4b9jMyf4FCWzfA9V87
+```
+
+其他同学按自己的账号填写：
+
+```properties
+# lihao
+app.ssh-tunnel.ssh-username=lihao
+app.ssh-tunnel.ssh-password=P8PybDFgUJmkCwj5rf
+
+# nengen
+app.ssh-tunnel.ssh-username=nengen
+app.ssh-tunnel.ssh-password=9nxEeQnX3Y85w54yVH
+
+# wangting
+app.ssh-tunnel.ssh-username=wangting
+app.ssh-tunnel.ssh-password=KKt4W5mBhznVk9dP5Z
+```
+
+数据库连接配置不要改，保持后端程序使用 `api_app` 连接数据库：
+
+```properties
+spring.datasource.url=jdbc:postgresql://127.0.0.1:15432/api
+spring.datasource.username=api_app
+spring.datasource.password=ApiApp_6M9pK2vQ8zR4tX7n
+```
+
+改好后直接启动后端：
+
+```bash
+mvn spring-boot:run
+```
+
+如果看到类似输出，说明 SSH 隧道和数据库连接已经成功：
+
+```text
+Starting SSH tunnel: localhost:15432 -> 127.0.0.1:5432 via 165.232.172.99
+SSH tunnel ready for PostgreSQL
+HikariPool-1 - Start completed.
+```
+
+注意：服务器密码写在 `src/main/resources/application.properties` 中，只适合本地课程项目使用，不要提交到公开仓库或截图外发。
+
+## 后端启动时自动准备 Redis
+
+后端已经配置为启动时自动检查本地 Redis：
+
+```properties
+spring.data.redis.host=127.0.0.1
+spring.data.redis.port=6379
+app.redis.auto-start.enabled=true
+app.redis.auto-start.container-name=douyin-redis
+app.redis.auto-start.image=redis:7
+```
+
+启动后端时：
+
+```bash
+mvn spring-boot:run
+```
+
+应用会先检查 `127.0.0.1:6379` 是否已有 Redis。如果 Redis 已经在运行，会直接使用它。
+
+如果 Redis 没有运行，应用会尝试自动执行等价于下面的 Docker 操作：
+
+```bash
+docker start douyin-redis
+```
+
+如果本地还没有 `douyin-redis` 容器，则会尝试创建并启动：
+
+```bash
+docker run --name douyin-redis -p 6379:6379 -d redis:7
+```
+
+如果电脑没有安装 Docker，或 Docker Desktop 没有启动，后端仍然可以启动；Redis 缓存会自动绕过，控制台会看到 Redis auto-start 或 Redis unavailable 相关 warning。
+
+如果不想让后端自动启动 Redis，可以把配置改为：
+
+```properties
+app.redis.auto-start.enabled=false
+```
+
 ## 常见错误
 
 ### Connection to 127.0.0.1:5432 refused（启动后端时报错）

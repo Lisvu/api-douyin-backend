@@ -40,6 +40,17 @@ public interface RequestLogRepository extends JpaRepository<RequestLog, Long> {
     @Query("SELECT AVG(r.durationMs) FROM RequestLog r")
     Double getAverageDurationMs();
 
+    @Query(value = """
+        SELECT AVG(recent.duration_ms)
+        FROM (
+            SELECT duration_ms
+            FROM request_logs
+            ORDER BY timestamp DESC
+            LIMIT 100
+        ) recent
+        """, nativeQuery = true)
+    Double getRecentAverageDurationMs();
+
     // 获取总请求数
     long count();
 

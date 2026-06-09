@@ -25,7 +25,6 @@ public class RequestLoggerFilter implements Filter {
     private static final long SLOW_THRESHOLD_MS = 500;
 
     private final RequestLogRepository requestLogRepository;
-
     public RequestLoggerFilter(RequestLogRepository requestLogRepository) {
         this.requestLogRepository = requestLogRepository;
     }
@@ -78,25 +77,34 @@ public class RequestLoggerFilter implements Filter {
                         userId, getClientIp(httpRequest));
 
                 // 3. 异步持久化到数据库（不阻塞请求响应）
-                CompletableFuture.runAsync(() -> {
-                    try {
-                        RequestLog entity = new RequestLog();
-                        entity.setMethod(method);
-                        entity.setUrl(url);
-                        entity.setStatusCode(status);
-                        entity.setDurationMs(duration);
-                        entity.setRequestBody(reqBody);
-                        entity.setResponseBody(resBody);
-                        entity.setTimestamp(LocalDateTime.now());
-                        requestLogRepository.save(entity);
-                    } catch (Exception e) {
-                        log.error("Failed to save request log: {}", e.getMessage());
-                    }
-                });
+                saveRequestLogAsync(method, url, status, duration, reqBody, resBody);
             }
 
             wrappedResponse.copyBodyToResponse();
         }
+    }
+
+    private void saveRequestLogAsync(String method,
+                                     String url,
+                                     int status,
+                                     long duration,
+                                     String reqBody,
+                                     String resBody) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                RequestLog entity = new RequestLog();
+                entity.setMethod(method);
+                entity.setUrl(url);
+                entity.setStatusCode(status);
+                entity.setDurationMs(duration);
+                entity.setRequestBody(reqBody);
+                entity.setResponseBody(resBody);
+                entity.setTimestamp(LocalDateTime.now());
+                requestLogRepository.save(entity);
+            } catch (Exception e) {
+                log.error("Failed to save request log: {}", e.getMessage());
+            }
+        });
     }
 
     private String bodyAsText(byte[] bodyBytes) {

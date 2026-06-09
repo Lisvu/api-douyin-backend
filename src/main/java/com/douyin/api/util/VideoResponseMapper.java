@@ -28,7 +28,7 @@ public final class VideoResponseMapper {
         item.put("comments_count", 0);
         item.put("favorites_count", 0);
         item.put("status", "published");
-        item.put("created_at", video.getCreatedAt());
+        item.put("created_at", video.getCreatedAt() == null ? null : video.getCreatedAt().toString());
         item.put("creator_name", video.getUser().getUsername());
 
         putLikeFields(item, liked, likeCount);

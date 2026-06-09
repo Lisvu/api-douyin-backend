@@ -8,10 +8,10 @@ import com.douyin.api.repository.LikeRepository;
 import com.douyin.api.repository.UserRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
+import com.douyin.api.service.RedisCacheService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -20,6 +20,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.time.Duration;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -46,7 +48,6 @@ class LikeApiTest {
     @Mock
     private ViewRepository viewRepository;
 
-    @InjectMocks
     private VideoController videoController;
 
     private User user;
@@ -54,6 +55,13 @@ class LikeApiTest {
 
     @BeforeEach
     void setUp() {
+        videoController = new VideoController(
+                userRepository,
+                videoRepository,
+                likeRepository,
+                viewRepository,
+                new NoOpRedisCacheService()
+        );
         mockMvc = MockMvcBuilders.standaloneSetup(videoController).build();
 
         user = new User();
@@ -126,5 +134,28 @@ class LikeApiTest {
         return put(url)
                 .requestAttr("userId", 1L)
                 .contentType(MediaType.APPLICATION_JSON);
+    }
+
+    private static class NoOpRedisCacheService extends RedisCacheService {
+        NoOpRedisCacheService() {
+            super(null, null);
+        }
+
+        @Override
+        public Optional<Map<String, Object>> getMap(String key) {
+            return Optional.empty();
+        }
+
+        @Override
+        public void put(String key, Object value, Duration ttl) {
+        }
+
+        @Override
+        public void evict(String key) {
+        }
+
+        @Override
+        public void evictPrefix(String prefix) {
+        }
     }
 }

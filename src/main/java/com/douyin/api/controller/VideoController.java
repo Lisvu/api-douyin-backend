@@ -8,6 +8,7 @@ import com.douyin.api.repository.LikeRepository;
 import com.douyin.api.repository.UserRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
+import com.douyin.api.service.RedisCacheService;
 import com.douyin.api.util.VideoResponseMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -31,6 +32,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.*;
 
 @RestController
@@ -41,17 +43,21 @@ public class VideoController {
     private final VideoRepository videoRepository;
     private final LikeRepository likeRepository;
     private final ViewRepository viewRepository;
+    private final RedisCacheService redisCacheService;
+    private static final Duration RECOMMENDATIONS_TTL = Duration.ofSeconds(30);
     private static final org.slf4j.Logger log =
             org.slf4j.LoggerFactory.getLogger(VideoController.class);
 
     public VideoController(UserRepository userRepository,
                            VideoRepository videoRepository,
                            LikeRepository likeRepository,
-                           ViewRepository viewRepository) {
+                           ViewRepository viewRepository,
+                           RedisCacheService redisCacheService) {
         this.userRepository = userRepository;
         this.videoRepository = videoRepository;
         this.likeRepository = likeRepository;
         this.viewRepository = viewRepository;
+        this.redisCacheService = redisCacheService;
     }
 
     // ----------------------------------------------------
@@ -71,8 +77,14 @@ public class VideoController {
             HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         Map<String, Object> response = new HashMap<>();
+        String cacheKey = recommendationsCacheKey(userId, limit);
 
         try {
+            Optional<Map<String, Object>> cached = redisCacheService.getMap(cacheKey);
+            if (cached.isPresent()) {
+                return ResponseEntity.ok(cached.get());
+            }
+
             // Fetch videos with pagination to avoid loading all at once
             List<Video> rawVideos = videoRepository.findRecommendedVideosForUser(userId, PageRequest.of(0, limit));
             long totalVideosCount = videoRepository.count();
@@ -81,7 +93,7 @@ public class VideoController {
             List<Long> videoIds = rawVideos.stream().map(Video::getId).toList();
             Set<Long> likedVideoIds = videoIds.isEmpty()
                     ? Collections.emptySet()
-                    : likeRepository.findLikedVideoIds(userId, videoIds);
+                    : new HashSet<>(likeRepository.findLikedVideoIds(userId, videoIds));
 
             List<Map<String, Object>> mappedVideos = new ArrayList<>();
             for (Video v : rawVideos) {
@@ -94,6 +106,7 @@ public class VideoController {
             response.put("allViewed", mappedVideos.isEmpty());
             response.put("totalCount", totalVideosCount);
 
+            redisCacheService.put(cacheKey, response, RECOMMENDATIONS_TTL);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             response.put("success", false);
@@ -127,6 +140,8 @@ public class VideoController {
                 }
                 View view = new View(userId, videoId);
                 viewRepository.save(view);
+                redisCacheService.evictPrefix(recommendationsCachePrefix(userId));
+                redisCacheService.evict("admin:stats");
             }
             response.put("success", true);
             response.put("message", "Video marked as viewed.");
@@ -149,6 +164,8 @@ public class VideoController {
 
         try {
             viewRepository.deleteByUserId(userId);
+            redisCacheService.evictPrefix(recommendationsCachePrefix(userId));
+            redisCacheService.evict("admin:stats");
             response.put("success", true);
             response.put("message", "Your watch history has been reset. All videos can be recommended again!");
             return ResponseEntity.ok(response);
@@ -196,6 +213,8 @@ public class VideoController {
                 VideoResponseMapper.putLikeFields(response, true, currentLikes + 1);
             }
 
+            redisCacheService.evictPrefix(recommendationsCachePrefix(userId));
+            redisCacheService.evict("admin:stats");
             return ResponseEntity.ok(response);
         } catch (DataIntegrityViolationException duplicateLike) {
             // Concurrent duplicate like: unique (user_id, video_id) already exists
@@ -296,6 +315,8 @@ public class VideoController {
             video.setLikesCount(0);
 
             videoRepository.save(video);
+            redisCacheService.evictPrefix("recommendations:");
+            redisCacheService.evict("admin:stats");
 
             Map<String, Object> videoData = VideoResponseMapper.toFeedItem(video, false);
 
@@ -394,6 +415,8 @@ public class VideoController {
         likeRepository.deleteByVideoId(videoId);
         viewRepository.deleteByVideoId(videoId);
         videoRepository.delete(video);
+        redisCacheService.evictPrefix("recommendations:");
+        redisCacheService.evict("admin:stats");
 
         // 事务外删本地文件
         deleteLocalFile(video.getVideoUrl(), "/uploads/videos/");
@@ -423,5 +446,13 @@ public class VideoController {
         int lastDotIndex = originalFilename.lastIndexOf('.');
         if (lastDotIndex == -1) return fallback;
         return originalFilename.substring(lastDotIndex).toLowerCase();
+    }
+
+    private String recommendationsCacheKey(Long userId, int limit) {
+        return recommendationsCachePrefix(userId) + ":limit:" + limit;
+    }
+
+    private String recommendationsCachePrefix(Long userId) {
+        return "recommendations:user:" + userId;
     }
 }
