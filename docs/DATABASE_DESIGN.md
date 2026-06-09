@@ -158,24 +158,31 @@ CREATE TABLE comments (
 
 ### 7. 接口请求日志持久化表 (`request_logs`)
 *   **物理表名**：`request_logs`
-*   **用途说明**：目前拦截器使用内存队列。在高生产环境下，可以通过将该表持久化以支持后台管理端（AdminController）拉取全量接口耗时统计与异常排查。
+*   **用途说明**：系统通过 RequestLoggerFilter 对所有 /api/v1 请求进行统一拦截，
+    异步持久化至本表，支持后台管理端（AdminController）拉取全量
+    接口耗时统计与异常排查。记录字段包含请求追踪 ID、登录用户及
+    客户端 IP，敏感字段（password、token）在写入前统一脱敏处理。
 *   **表结构设计**：
 
 ```sql
 CREATE TABLE request_logs (
-    id BIGSERIAL PRIMARY KEY,
-    method VARCHAR(10) NOT NULL,                -- 请求方法: GET/POST/PUT/DELETE
-    url VARCHAR(255) NOT NULL,                  -- API 请求路径
-    status_code INTEGER NOT NULL,               -- HTTP 响应状态码 (如 200, 401, 403, 500)
-    duration_ms BIGINT NOT NULL,                -- 接口响应耗时 (毫秒)
-    request_body TEXT,                          -- 入参数据 JSON (最长 1000 字符)
-    response_body TEXT,                         -- 响应出参 JSON (最长 1000 字符)
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+                              id BIGSERIAL PRIMARY KEY,
+                              method VARCHAR(10) NOT NULL,                -- 请求方法: GET/POST/PUT/DELETE
+                              url VARCHAR(255) NOT NULL,                  -- API 请求路径
+                              status_code INTEGER NOT NULL,               -- HTTP 响应状态码 (如 200, 401, 403, 500)
+                              duration_ms BIGINT NOT NULL,                -- 接口响应耗时 (毫秒)
+                              request_body TEXT,                          -- 入参数据 JSON (最长 1000 字符)
+                              response_body TEXT,                         -- 响应出参 JSON (最长 1000 字符)
+                              timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                              trace_id VARCHAR(32),                       -- 请求唯一追踪 ID
+                              user_id BIGINT,                             -- 当前登录用户 ID（未登录为 NULL）
+                              user_ip VARCHAR(45)                         -- 客户端 IP 地址
 );
 ```
 *   **优化索引**：
     *   `idx_logs_timestamp`: 基于请求时间检索。
     *   `idx_logs_performance`: 基于 `duration_ms` 建立降序索引，用于迅速找出系统最慢的“瓶颈接口”。
+    *   `idx_logs_user_id`: 基于 `user_id` 建立索引，支持按用户查询请求历史。
 
 ---
 

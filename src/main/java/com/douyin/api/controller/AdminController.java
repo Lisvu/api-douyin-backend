@@ -90,6 +90,9 @@ public class AdminController {
             logMap.put("durationMs", log.getDurationMs());
             logMap.put("requestBody", log.getRequestBody());
             logMap.put("responseBody", log.getResponseBody());
+            logMap.put("traceId", log.getTraceId());
+            logMap.put("userId", log.getUserId());
+            logMap.put("userIp", log.getUserIp());
             formattedLogs.add(logMap);
         }
 
