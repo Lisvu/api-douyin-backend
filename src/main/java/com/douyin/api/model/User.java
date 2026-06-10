@@ -37,6 +37,9 @@ public class User {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
+    @Column(name = "last_like_notification_read_at")
+    private LocalDateTime lastLikeNotificationReadAt;
+
     @PrePersist
     protected void onCreate() {
         LocalDateTime now = LocalDateTime.now();
@@ -126,5 +129,13 @@ public class User {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public LocalDateTime getLastLikeNotificationReadAt() {
+        return lastLikeNotificationReadAt;
+    }
+
+    public void setLastLikeNotificationReadAt(LocalDateTime lastLikeNotificationReadAt) {
+        this.lastLikeNotificationReadAt = lastLikeNotificationReadAt;
     }
 }

@@ -83,7 +83,7 @@ POST /api/v1/auth/login
 Authorization: Bearer <token>
 ```
 
-权限控制规则：删除视频只能删除当前登录用户发布的视频；注销账户只能注销当前登录用户；观看记录和我的视频列表都只允许访问当前用户自己的数据。
+权限控制规则：删除视频只能删除当前登录用户发布的视频；注销账户只能注销当前登录用户；观看记录和我的视频列表都只允许访问当前用户自己的数据；F14 点赞通知列表只返回「他人对我发布视频的点赞」，不包含自己给自己点赞。
 
 ## 日志与监控
 
@@ -121,7 +121,9 @@ GET /api/v1/admin/stats
 | 推荐视频 | `GET` | `/api/v1/videos/recommendations` | 是 |
 | 标记视频已观看 | `POST` | `/api/v1/videos/{id}/views` | 是 |
 | 重置观看记录 | `DELETE` | `/api/v1/users/me/views` | 是 |
-| 点赞或取消点赞 | `PUT` | `/api/v1/videos/{id}/like` | 是 |
+| 点赞或取消点赞（F04） | `PUT` | `/api/v1/videos/{id}/like` | 是 |
+| 查看点赞通知（F14） | `GET` | `/api/v1/users/me/like-notifications?page=1&limit=10` | 是 |
+| 标记点赞通知已读（F14） | `PUT` | `/api/v1/users/me/like-notifications/read` | 是 |
 | 发布视频 | `POST` | `/api/v1/videos` | 是 |
 | 查看我的视频 | `GET` | `/api/v1/users/me/videos?page=1&limit=6` | 是 |
 | 删除我的视频 | `DELETE` | `/api/v1/videos/{id}` | 是 |

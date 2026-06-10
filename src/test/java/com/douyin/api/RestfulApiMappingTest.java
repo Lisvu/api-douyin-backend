@@ -30,7 +30,8 @@ class RestfulApiMappingTest {
         assertThat(classMapping(AdminController.class)).containsExactly("/api/v1/admin");
 
         assertThat(postMappings(AuthController.class)).containsExactlyInAnyOrder("/register", "/login");
-        assertThat(getMappings(UserController.class)).containsExactly("/me");
+        assertThat(getMappings(UserController.class)).containsExactlyInAnyOrder("/me", "/me/like-notifications");
+        assertThat(putMappings(UserController.class)).containsExactly("/me/like-notifications/read");
         assertThat(deleteMappings(UserController.class)).containsExactly("/me");
 
         assertThat(getMappings(VideoController.class)).containsExactlyInAnyOrder(

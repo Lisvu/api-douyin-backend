@@ -33,7 +33,7 @@ erDiagram
 
 ### 1. 用户表 (`users`)
 *   **物理表名**：`users`
-*   **用途说明**：存储用户账号、密码及基本个人资料，用作 JWT 无状态鉴权的账户验证防线。
+*   **用途说明**：存储用户账号、密码及基本个人资料，用作 JWT 无状态鉴权的账户验证防线；`last_like_notification_read_at` 用于 F14「谁赞了我的视频」通知的已读水位线。
 *   **表结构设计**：
 
 | 字段名称 (Column) | 物理类型 (PostgreSQL) | 约束与属性 (Constraints) | 默认值 (Default) | 描述与业务意义 (Description) |
@@ -42,12 +42,16 @@ erDiagram
 | `username` | `VARCHAR(32)` | UNIQUE, NOT NULL | - | 登录账号 (最长 32 位) |
 | `password_hash` | `TEXT` | NOT NULL | - | 密码的 BCrypt 安全哈希值 |
 | `display_name` | `VARCHAR(64)` | NOT NULL | - | 用户公开昵称 (默认同 username) |
+| `avatar_url` | `VARCHAR(255)` | NULL | - | 用户头像 URL |
+| `bio` | `VARCHAR(255)` | NULL | - | 个人简介 |
 | `status` | `VARCHAR(20)` | NOT NULL | `'active'` | 账号状态: `active`(正常), `frozen`(冻结) |
 | `created_at` | `TIMESTAMP` | NOT NULL | - | 账号注册时间 |
 | `updated_at` | `TIMESTAMP` | NOT NULL | - | 账号信息更新时间 |
+| `last_like_notification_read_at` | `TIMESTAMP` | NULL | `NULL` | 上次标记点赞通知已读的时间；`NULL` 表示全部未读 |
 
 *   **索引规划 (Indexes)**：
     *   `uq_users_username` (Unique): 基于 `username` 自动生成的唯一索引，保障登录时高效率检索。
+*   **结构变更脚本**：`docs/migrations/001_add_last_like_notification_read_at.sql`
 *   **JPA 映射类**：`com.douyin.api.model.User`
 
 ---
@@ -89,6 +93,10 @@ erDiagram
 
 *   **索引与约束规划 (Indexes & Constraints)**：
     *   `uq_likes_user_video` (Unique Constraint): 在 `(user_id, video_id)` 上创建**联合唯一索引**，数据库底层防御重复点赞，保证点赞操作的幂等性。
+*   **关联业务查询 (F14 点赞通知)**：
+    *   `GET /api/v1/users/me/like-notifications` 通过 `likes` 联表 `videos`、`users` 查询「他人对我发布视频的点赞」。
+    *   过滤条件：`videos.user_id = 当前用户` 且 `likes.user_id <> 当前用户`（排除自己给自己点赞）。
+    *   单条通知是否已读：比较 `likes.created_at` 与 `users.last_like_notification_read_at`。
 *   **JPA 映射类**：`com.douyin.api.model.Like`
 
 ---
