@@ -546,6 +546,15 @@ curl -X PUT "http://localhost:8080/api/v1/videos/12/like" \
 | 并发重复点赞 | 捕获唯一约束冲突，返回 `liked=true` 与当前 `likeCount`，不重复加 1 |
 | 刷新后状态回显 | 重新请求 `GET /api/v1/videos/recommendations`，读取 `liked` 与 `likeCount` |
 
+### 错误码说明
+
+| 状态码 | 说明 |
+| --- | --- |
+| `200` | 点赞或取消点赞成功；并发重复点赞时幂等返回 `liked=true` 与当前 `likeCount` |
+| `401` | 未登录、Token 缺失/格式错误、Token 无效或过期 |
+| `404` | 视频 ID 不存在 |
+| `500` | 服务端点赞切换异常（如数据库写入失败） |
+
 ### 推荐流中的点赞状态回显
 
 `GET /api/v1/videos/recommendations` 每条视频包含：
@@ -561,6 +570,169 @@ curl -X PUT "http://localhost:8080/api/v1/videos/12/like" \
   "likes_count": 581
 }
 ```
+
+---
+
+## 查看点赞通知（F14）
+
+- 接口说明：分页查询「他人对我发布视频的点赞」通知列表，并返回未读数量。只包含其他用户对我名下视频的点赞，不包含自己给自己点赞。已读状态基于用户上次调用「标记已读」接口的时间戳计算。
+- 请求方法：`GET`
+- 请求路径：`/api/v1/users/me/like-notifications`
+- 是否需要登录：`是`
+
+### Path 参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| - | - | - | 无 |
+
+### Query 参数
+
+| 参数名 | 类型 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `page` | `Integer` | 否 | `1` | 页码，从 1 开始 |
+| `limit` | `Integer` | 否 | `10` | 每页条数，最大 50 |
+
+### Body 参数
+
+无。
+
+### 请求示例
+
+```bash
+curl -X GET "http://localhost:8080/api/v1/users/me/like-notifications?page=1&limit=10" \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+### 成功响应 `200 OK`
+
+```json
+{
+  "success": true,
+  "notifications": [
+    {
+      "likeId": 11,
+      "likerUsername": "fan_user",
+      "likerDisplayName": "Fan User",
+      "videoId": 9,
+      "videoTitle": "我的作品",
+      "likedAt": "2026-05-22T12:00:00",
+      "read": false
+    }
+  ],
+  "unreadCount": 1,
+  "pagination": {
+    "page": 1,
+    "limit": 10,
+    "total": 1,
+    "totalPages": 1
+  }
+}
+```
+
+### 失败响应
+
+`401 Unauthorized`
+
+```json
+{
+  "success": false,
+  "message": "Access Denied: Missing or malformed Authorization header."
+}
+```
+
+### 响应字段说明
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `notifications` | `Array` | 点赞通知列表，按点赞时间倒序 |
+| `notifications[].likeId` | `Long` | 点赞记录 ID |
+| `notifications[].likerUsername` | `String` | 点赞用户账号 |
+| `notifications[].likerDisplayName` | `String` | 点赞用户展示名 |
+| `notifications[].videoId` | `Long` | 被点赞视频 ID |
+| `notifications[].videoTitle` | `String` | 被点赞视频标题 |
+| `notifications[].likedAt` | `String` | 点赞时间（ISO-8601） |
+| `notifications[].read` | `Boolean` | 当前用户是否已读该条通知 |
+| `unreadCount` | `Integer` | 未读通知总数 |
+| `pagination.page` | `Integer` | 当前页码 |
+| `pagination.limit` | `Integer` | 每页条数 |
+| `pagination.total` | `Long` | 通知总条数 |
+| `pagination.totalPages` | `Integer` | 总页数 |
+
+### 错误码说明
+
+| 状态码 | 说明 |
+| --- | --- |
+| `200` | 查询成功；无他人点赞时返回空数组 `notifications: []`，`unreadCount` 为 `0` |
+| `401` | 未登录、Token 缺失/格式错误、Token 无效或过期；用户上下文缺失或会话无效 |
+| `500` | 服务端查询异常（如数据库缺少 `users.last_like_notification_read_at` 字段） |
+
+### 异常场景说明
+
+| 场景 | 行为 |
+| --- | --- |
+| 未登录访问 | 返回 `401`，前端提示重新登录 |
+| 暂无他人点赞 | 返回 `200`，`notifications` 为空列表 |
+| 自己给自己点赞 | 不出现在通知列表中 |
+| 分页参数非法 | `page` 小于 1 时按第 1 页处理；`limit` 小于 1 按 1、大于 50 按 50 处理 |
+
+---
+
+## 标记点赞通知已读（F14）
+
+- 接口说明：将当前用户的点赞通知全部标记为已读，更新 `lastLikeNotificationReadAt` 时间戳。前端通常在打开通知面板时调用。
+- 请求方法：`PUT`
+- 请求路径：`/api/v1/users/me/like-notifications/read`
+- 是否需要登录：`是`
+
+### Path / Query / Body 参数
+
+无。
+
+### 请求示例
+
+```bash
+curl -X PUT "http://localhost:8080/api/v1/users/me/like-notifications/read" \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+### 成功响应 `200 OK`
+
+```json
+{
+  "success": true,
+  "message": "Like notifications marked as read.",
+  "unreadCount": 0
+}
+```
+
+### 失败响应
+
+`401 Unauthorized`
+
+```json
+{
+  "success": false,
+  "message": "Access Denied: Missing or malformed Authorization header."
+}
+```
+
+`401 Unauthorized - Token 无效或过期`
+
+```json
+{
+  "success": false,
+  "message": "Access Denied: Invalid or expired token."
+}
+```
+
+### 错误码说明
+
+| 状态码 | 说明 |
+| --- | --- |
+| `200` | 标记已读成功，`unreadCount` 返回 `0` |
+| `401` | 未登录、Token 缺失/格式错误、Token 无效或过期；用户上下文缺失或会话无效 |
+| `500` | 服务端更新已读时间戳失败（如数据库缺少 `users.last_like_notification_read_at` 字段） |
 
 ---
 

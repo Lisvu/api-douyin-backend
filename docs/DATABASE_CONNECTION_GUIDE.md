@@ -370,6 +370,45 @@ api->
 
 `api_app` 是后端 Spring Boot 程序专用数据库账号，普通成员不需要使用。
 
+## 数据库结构变更（迁移）
+
+新增功能若涉及表结构变更，需先在 `api` 库执行对应 SQL。迁移脚本位于：
+
+```text
+docs/migrations/
+```
+
+### 点赞通知字段（F14）
+
+若启动后端时出现 `column last_like_notification_read_at does not exist`，说明 `users` 表尚未添加该列。
+
+**方式一（推荐）**：重启 Spring Boot 后端，程序启动时会自动检测并补列。
+
+**方式二（手动）**：SSH 登录服务器后执行：
+
+```bash
+psql -d api
+```
+
+```sql
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS last_like_notification_read_at TIMESTAMP;
+```
+
+或直接执行迁移文件：
+
+```bash
+psql -d api -f /path/to/docs/migrations/001_add_last_like_notification_read_at.sql
+```
+
+验证：
+
+```sql
+\d users
+```
+
+应能看到 `last_like_notification_read_at` 字段。
+
 ## 安全提醒
 
 不要把服务器密码或数据库密码发到公开群、代码仓库或截图里。

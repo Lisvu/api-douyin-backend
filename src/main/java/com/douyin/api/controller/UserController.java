@@ -5,6 +5,7 @@ import com.douyin.api.model.User;
 import com.douyin.api.model.Video;
 import com.douyin.api.repository.CommentRepository;
 import com.douyin.api.repository.FavoriteRepository;
+import com.douyin.api.repository.LikeNotificationProjection;
 import com.douyin.api.repository.LikeRepository;
 import com.douyin.api.repository.UserRepository;
 import com.douyin.api.repository.UserRelationRepository;
@@ -20,10 +21,17 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.File;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -81,6 +89,67 @@ public class UserController {
         response.put("success", true);
         response.put("user", userToMap(user));
         redisCacheService.put(cacheKey, response, USER_PROFILE_TTL);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/me/like-notifications")
+    public ResponseEntity<Map<String, Object>> getLikeNotifications(
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "limit", defaultValue = "10") int limit,
+            HttpServletRequest request) {
+        User user = getCurrentUserOrThrow(request);
+        Long ownerId = user.getId();
+        LocalDateTime readAfter = user.getLastLikeNotificationReadAt();
+
+        int safePage = Math.max(page, 1);
+        int safeLimit = Math.min(Math.max(limit, 1), 50);
+        Pageable pageable = PageRequest.of(safePage - 1, safeLimit);
+
+        Page<LikeNotificationProjection> notificationPage =
+                likeRepository.findReceivedLikeNotifications(ownerId, pageable);
+
+        List<Map<String, Object>> notifications = new ArrayList<>();
+        for (LikeNotificationProjection item : notificationPage.getContent()) {
+            Map<String, Object> notification = new HashMap<>();
+            notification.put("likeId", item.getLikeId());
+            notification.put("likerUsername", item.getLikerUsername());
+            notification.put("likerDisplayName", item.getLikerDisplayName());
+            notification.put("videoId", item.getVideoId());
+            notification.put("videoTitle", item.getVideoTitle());
+            notification.put("likedAt", item.getLikedAt());
+            notification.put("read", isNotificationRead(item.getLikedAt(), readAfter));
+            notifications.add(notification);
+        }
+
+        long unreadCount = readAfter == null
+                ? likeRepository.countReceivedLikes(ownerId)
+                : likeRepository.countReceivedLikesAfter(ownerId, readAfter);
+
+        Map<String, Object> pagination = new HashMap<>();
+        pagination.put("page", safePage);
+        pagination.put("limit", safeLimit);
+        pagination.put("total", notificationPage.getTotalElements());
+        pagination.put("totalPages", notificationPage.getTotalPages());
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("notifications", notifications);
+        response.put("unreadCount", unreadCount);
+        response.put("pagination", pagination);
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/me/like-notifications/read")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> markLikeNotificationsRead(HttpServletRequest request) {
+        User user = getCurrentUserOrThrow(request);
+        user.setLastLikeNotificationReadAt(LocalDateTime.now());
+        userRepository.save(user);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "Like notifications marked as read.");
+        response.put("unreadCount", 0);
         return ResponseEntity.ok(response);
     }
 
@@ -147,6 +216,13 @@ public class UserController {
 
     private String userProfileCacheKey(Long userId) {
         return "user:profile:" + userId;
+    }
+
+    private boolean isNotificationRead(LocalDateTime likedAt, LocalDateTime readAfter) {
+        if (readAfter == null || likedAt == null) {
+            return false;
+        }
+        return !likedAt.isAfter(readAfter);
     }
 
     private void deleteLocalFilesForVideo(Video video) {
