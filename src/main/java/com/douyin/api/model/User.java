@@ -40,6 +40,9 @@ public class User {
     @Column(name = "last_like_notification_read_at")
     private LocalDateTime lastLikeNotificationReadAt;
 
+    @Column(nullable = false, length = 20)
+    private String role = "USER";
+
     @PrePersist
     protected void onCreate() {
         LocalDateTime now = LocalDateTime.now();
@@ -138,4 +141,8 @@ public class User {
     public void setLastLikeNotificationReadAt(LocalDateTime lastLikeNotificationReadAt) {
         this.lastLikeNotificationReadAt = lastLikeNotificationReadAt;
     }
+
+    public String getRole() { return role; }
+
+    public void setRole(String role) { this.role = role; }
 }
