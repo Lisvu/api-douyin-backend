@@ -24,11 +24,12 @@ public class JwtUtil {
     }
 
     // Generate JWT token containing user id and username
-    public String generateToken(Long userId, String username) {
+    public String generateToken(Long userId, String username, String role) {
         return Jwts.builder()
                 .subject(username)
                 .claim("id", userId)
                 .claim("username", username)
+                .claim("role", role)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(key)
@@ -56,5 +57,10 @@ public class JwtUtil {
     // Extract Username
     public String getUsernameFromToken(Claims claims) {
         return claims.getSubject();
+    }
+
+    // Extract Role
+    public String getRoleFromToken(Claims claims) {
+        return claims.get("role", String.class);
     }
 }

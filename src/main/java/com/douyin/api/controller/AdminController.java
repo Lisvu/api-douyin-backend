@@ -19,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.time.format.DateTimeFormatter;
 import java.time.Duration;
 import java.util.*;
@@ -63,7 +64,14 @@ public class AdminController {
     @GetMapping("/request-logs")
     public ResponseEntity<Map<String, Object>> getLogs(
             @RequestParam(value = "limit", defaultValue = "100") int limit,
-            @RequestParam(value = "page", defaultValue = "1") int page) {
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            HttpServletRequest request) {
+
+        // 权限校验
+        if (!"ADMIN".equals(request.getAttribute("role"))) {
+            return ResponseEntity.status(403)
+                    .body(Map.of("success", false, "message", "Forbidden"));
+        }
 
         Map<String, Object> response = new HashMap<>();
 
@@ -112,7 +120,14 @@ public class AdminController {
 
     @PostMapping("/public-samples/redistribute-owners")
     @Transactional
-    public ResponseEntity<Map<String, Object>> redistributePublicSampleOwners() {
+    public ResponseEntity<Map<String, Object>> redistributePublicSampleOwners(HttpServletRequest request) {
+
+        // 权限校验
+        if (!"ADMIN".equals(request.getAttribute("role"))) {
+            return ResponseEntity.status(403)
+                    .body(Map.of("success", false, "message", "Forbidden"));
+        }
+
         Map<String, Object> response = new LinkedHashMap<>();
 
         List<User> realUsers = userRepository.findAll().stream()
@@ -154,7 +169,14 @@ public class AdminController {
 
     // 统计数据（从数据库查询）
     @GetMapping("/stats")
-    public ResponseEntity<Map<String, Object>> getStats() {
+    public ResponseEntity<Map<String, Object>> getStats(HttpServletRequest request) {
+
+        // 权限校验
+        if (!"ADMIN".equals(request.getAttribute("role"))) {
+            return ResponseEntity.status(403)
+                    .body(Map.of("success", false, "message", "Forbidden"));
+        }
+
         Map<String, Object> response = new HashMap<>();
         Optional<Map<String, Object>> cached = redisCacheService.getMap("admin:stats");
         if (cached.isPresent()) {

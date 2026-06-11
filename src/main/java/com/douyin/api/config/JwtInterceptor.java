@@ -44,6 +44,7 @@ public class JwtInterceptor implements HandlerInterceptor {
         // Inject verified user attributes into the request
         request.setAttribute("userId", jwtUtil.getUserIdFromToken(claims));
         request.setAttribute("username", jwtUtil.getUsernameFromToken(claims));
+        request.setAttribute("role", jwtUtil.getRoleFromToken(claims));
 
         return true;
     }

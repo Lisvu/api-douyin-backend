@@ -209,6 +209,7 @@ public class UserController {
         userData.put("avatarUrl", user.getAvatarUrl());
         userData.put("bio", user.getBio());
         userData.put("status", user.getStatus());
+        userData.put("role", user.getRole());
         userData.put("createdAt", user.getCreatedAt() == null ? null : user.getCreatedAt().toString());
         userData.put("updatedAt", user.getUpdatedAt() == null ? null : user.getUpdatedAt().toString());
         return userData;

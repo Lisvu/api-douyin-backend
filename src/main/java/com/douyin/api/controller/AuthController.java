@@ -55,7 +55,7 @@ public class AuthController {
         userRepository.save(user);
         redisCacheService.put(authUserCacheKey(username), userToAuthCache(user), AUTH_USER_TTL);
 
-        String token = jwtUtil.generateToken(user.getId(), user.getUsername());
+        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole());
 
         Map<String, Object> userData = new HashMap<>();
         userData.put("id", user.getId());
@@ -64,6 +64,7 @@ public class AuthController {
         userData.put("avatarUrl", user.getAvatarUrl());
         userData.put("bio", user.getBio());
         userData.put("status", user.getStatus());
+        userData.put("role", user.getRole());
 
         response.put("success", true);
         response.put("message", "Registration successful!");
@@ -93,7 +94,8 @@ public class AuthController {
             if (passwordHash != null && BCrypt.checkpw(password, passwordHash)) {
                 Long id = ((Number) user.get("id")).longValue();
                 String cachedUsername = (String) user.get("username");
-                String token = jwtUtil.generateToken(id, cachedUsername);
+                String role = (String) user.get("role");
+                String token = jwtUtil.generateToken(id, cachedUsername, role);
 
                 response.put("success", true);
                 response.put("message", "Login successful!");
@@ -112,7 +114,7 @@ public class AuthController {
 
         User user = optionalUser.get();
         redisCacheService.put(authUserCacheKey(username), userToAuthCache(user), AUTH_USER_TTL);
-        String token = jwtUtil.generateToken(user.getId(), user.getUsername());
+        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole());
 
         Map<String, Object> userData = new HashMap<>();
         userData.put("id", user.getId());
@@ -121,6 +123,7 @@ public class AuthController {
         userData.put("avatarUrl", user.getAvatarUrl());
         userData.put("bio", user.getBio());
         userData.put("status", user.getStatus());
+        userData.put("role", user.getRole());
 
         response.put("success", true);
         response.put("message", "Login successful!");
@@ -139,6 +142,7 @@ public class AuthController {
         cached.put("avatarUrl", user.getAvatarUrl());
         cached.put("bio", user.getBio());
         cached.put("status", user.getStatus());
+        cached.put("role", user.getRole());
         return cached;
     }
 
@@ -150,6 +154,7 @@ public class AuthController {
         userData.put("avatarUrl", cached.get("avatarUrl"));
         userData.put("bio", cached.get("bio"));
         userData.put("status", cached.get("status"));
+        userData.put("role", cached.get("role"));
         return userData;
     }
 
