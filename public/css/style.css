@@ -733,16 +733,95 @@ body {
   gap: 6px;
 }
 
-/* Progress Slider along Bottom */
+/* Bottom playback controls */
+.video-bottom-controls {
+  position: absolute;
+  left: 28px;
+  right: 112px;
+  bottom: 118px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.video-progress-track {
+  position: relative;
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.video-progress-track::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.5);
+  transform: translate(50%, -50%);
+  opacity: 0;
+  transition: opacity 0.15s ease-in-out;
+}
+
+.video-bottom-controls:hover .video-progress-track::after {
+  opacity: 1;
+}
+
 .video-progress-line {
   position: absolute;
-  bottom: 0;
-  left: 0;
-  height: 3px;
-  background-color: var(--cyan-glow);
+  inset: 0 auto 0 0;
+  height: 100%;
+  background: var(--accent-cyan-gradient);
   width: 0%;
-  z-index: 5;
+  border-radius: inherit;
   transition: width 0.1s linear;
+}
+
+.video-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.video-time-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.88);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+.video-speed-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.video-speed-select {
+  min-width: 78px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(15, 15, 18, 0.72);
+  color: #fff;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  outline: none;
+}
+
+.video-speed-select:focus {
+  border-color: rgba(0, 242, 254, 0.5);
+  box-shadow: 0 0 0 2px rgba(0, 242, 254, 0.12);
 }
 
 /* ====================================================
@@ -2213,6 +2292,22 @@ body {
 
   .keyboard-tips {
     bottom: -26px;
+  }
+
+  .video-bottom-controls {
+    left: 18px;
+    right: 78px;
+    bottom: 112px;
+  }
+
+  .video-controls-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .video-speed-select {
+    min-width: 72px;
   }
 
   .my-videos-header,

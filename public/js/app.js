@@ -12,6 +12,8 @@ let token = localStorage.getItem('douyin_token') || null;
 let recommendedVideos = [];
 let activeVideoIndex = -1;
 let lastScrollTime = 0;
+let selectedPlaybackRate = 1;
+const PLAYBACK_SPEED_OPTIONS = [0.5, 1, 1.25, 1.5, 2];
 
 // Personal Videos State
 let myVideosPage = 1;
@@ -337,6 +339,7 @@ function renderRecommendCarousel() {
              preload="auto"
              playsinline
              onclick="togglePlayPause(${index})"
+             onloadedmetadata="updateVideoProgress(${index})"
              ontimeupdate="updateVideoProgress(${index})">
       </video>
 
@@ -349,8 +352,24 @@ function renderRecommendCarousel() {
         <i class="fa-solid fa-play"></i>
       </div>
 
-      <!-- Bottom Progress Bar -->
-      <div id="progress-${index}" class="video-progress-line"></div>
+      <!-- Bottom Controls -->
+      <div class="video-bottom-controls" onclick="event.stopPropagation()">
+        <div class="video-progress-track" onclick="seekVideo(event, ${index})">
+          <div id="progress-${index}" class="video-progress-line"></div>
+        </div>
+        <div class="video-controls-row">
+          <span id="time-${index}" class="video-time-label">00:00 / 00:00</span>
+          <label class="video-speed-control" for="speed-${index}">
+            <span>倍速</span>
+            <select id="speed-${index}"
+                    class="video-speed-select"
+                    onclick="event.stopPropagation()"
+                    onchange="changeVideoSpeed(${index}, this.value)">
+              ${renderPlaybackSpeedOptions()}
+            </select>
+          </label>
+        </div>
+      </div>
 
       <!-- Video Meta details (Bottom Left) -->
       <div class="video-details">
@@ -402,6 +421,7 @@ function setActiveVideo(index) {
     if (prevPlayer) {
       prevPlayer.pause();
       prevPlayer.currentTime = 0;
+      updateVideoProgress(activeVideoIndex);
     }
     
     // Manage class names for smooth slide animations
@@ -432,12 +452,16 @@ function setActiveVideo(index) {
   // Play newly active video player
   const activePlayer = document.getElementById(`player-${index}`);
   if (activePlayer) {
+    activePlayer.playbackRate = selectedPlaybackRate;
     activePlayer.play().catch(err => {
       console.log("Auto-play blocked by browser. User interaction needed to start audio.", err);
       // Show play indicator initially to prompt user
       const indicator = document.getElementById(`play-indicator-${index}`);
       if (indicator) indicator.classList.add('active');
     });
+
+    syncPlaybackRateControl(index);
+    updateVideoProgress(index);
     
     // Trigger "Viewed" history record after sliding to it to support recommendation exclusions!
     markVideoAsWatched(recommendedVideos[index].id);
@@ -492,9 +516,68 @@ function togglePlayPause(index) {
 function updateVideoProgress(index) {
   const player = document.getElementById(`player-${index}`);
   const progressBar = document.getElementById(`progress-${index}`);
+  const timeLabel = document.getElementById(`time-${index}`);
+
   if (player && progressBar) {
-    const percentage = (player.currentTime / player.duration) * 100;
+    const duration = Number.isFinite(player.duration) ? player.duration : 0;
+    const percentage = duration > 0 ? (player.currentTime / duration) * 100 : 0;
     progressBar.style.width = `${percentage}%`;
+    if (timeLabel) {
+      timeLabel.innerText = `${formatVideoTime(player.currentTime)} / ${formatVideoTime(duration)}`;
+    }
+  }
+}
+
+function renderPlaybackSpeedOptions() {
+  return PLAYBACK_SPEED_OPTIONS.map(rate => `
+    <option value="${rate}" ${rate === selectedPlaybackRate ? 'selected' : ''}>${rate}x</option>
+  `).join('');
+}
+
+function formatVideoTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    return '00:00';
+  }
+
+  const totalSeconds = Math.floor(seconds);
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainSeconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(remainSeconds).padStart(2, '0')}`;
+}
+
+function seekVideo(event, index) {
+  const player = document.getElementById(`player-${index}`);
+  const track = event.currentTarget;
+  if (!player || !track || !Number.isFinite(player.duration) || player.duration <= 0) {
+    return;
+  }
+
+  const rect = track.getBoundingClientRect();
+  const ratio = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1);
+  player.currentTime = player.duration * ratio;
+  updateVideoProgress(index);
+}
+
+function changeVideoSpeed(index, value) {
+  const parsedRate = Number(value);
+  if (!PLAYBACK_SPEED_OPTIONS.includes(parsedRate)) {
+    return;
+  }
+
+  selectedPlaybackRate = parsedRate;
+
+  const player = document.getElementById(`player-${index}`);
+  if (player) {
+    player.playbackRate = parsedRate;
+  }
+
+  recommendedVideos.forEach((_, videoIndex) => syncPlaybackRateControl(videoIndex));
+}
+
+function syncPlaybackRateControl(index) {
+  const speedSelect = document.getElementById(`speed-${index}`);
+  if (speedSelect) {
+    speedSelect.value = String(selectedPlaybackRate);
   }
 }
 

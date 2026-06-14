@@ -201,6 +201,7 @@ function renderRecommendCarousel() {
              preload="auto"
              playsinline
              onclick="togglePlayPause(${index})"
+             onloadedmetadata="updateVideoProgress(${index})"
              ontimeupdate="updateVideoProgress(${index})">
       </video>
       <div class="video-overlay-gradient-top"></div>
@@ -208,7 +209,23 @@ function renderRecommendCarousel() {
       <div id="play-indicator-${index}" class="video-play-indicator">
         <i class="fa-solid fa-play"></i>
       </div>
-      <div id="progress-${index}" class="video-progress-line"></div>
+      <div class="video-bottom-controls" onclick="event.stopPropagation()">
+        <div class="video-progress-track" onclick="seekVideo(event, ${index})">
+          <div id="progress-${index}" class="video-progress-line"></div>
+        </div>
+        <div class="video-controls-row">
+          <span id="time-${index}" class="video-time-label">00:00 / 00:00</span>
+          <label class="video-speed-control" for="speed-${index}">
+            <span>倍速</span>
+            <select id="speed-${index}"
+                    class="video-speed-select"
+                    onclick="event.stopPropagation()"
+                    onchange="changeVideoSpeed(${index}, this.value)">
+              ${renderPlaybackSpeedOptions()}
+            </select>
+          </label>
+        </div>
+      </div>
       <div class="video-details">
         <div class="creator-name">${video.creator_name || '创作者'}</div>
         <div class="video-title">${video.title}</div>
