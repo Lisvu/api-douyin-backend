@@ -1,7 +1,6 @@
 package com.douyin.api.repository;
 
 import com.douyin.api.model.RequestLog;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -27,8 +26,17 @@ public interface RequestLogRepository extends JpaRepository<RequestLog, Long> {
         """, nativeQuery = true)
     List<Object[]> findTop10SlowApis();
 
-    // 分页查询所有日志（按时间倒序）
-    Page<RequestLog> findAllByOrderByTimestampDesc(Pageable pageable);
+    List<RequestLog> findAllByOrderByTimestampDescIdDesc(Pageable pageable);
+
+    @Query("""
+            SELECT r FROM RequestLog r
+            WHERE r.timestamp < :cursorTimestamp OR (r.timestamp = :cursorTimestamp AND r.id < :cursorId)
+            ORDER BY r.timestamp DESC, r.id DESC
+            """)
+    List<RequestLog> findBeforeCursor(
+            @Param("cursorTimestamp") LocalDateTime cursorTimestamp,
+            @Param("cursorId") Long cursorId,
+            Pageable pageable);
 
     // 查询最近 N 条日志（不翻页，简单查询）
     List<RequestLog> findTop100ByOrderByTimestampDesc();

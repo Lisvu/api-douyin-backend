@@ -1,7 +1,6 @@
 package com.douyin.api.repository;
 
 import com.douyin.api.model.Video;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -10,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -20,13 +20,52 @@ public interface VideoRepository extends JpaRepository<Video, Long> {
 
     List<Video> findByTitleStartingWithOrderByIdAsc(String titlePrefix);
 
-    // Find all videos by a specific user with pagination, ordered by creation date descending
     @EntityGraph(attributePaths = {"user"})
-    Page<Video> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
+    List<Video> findByUserIdOrderByCreatedAtDescIdDesc(Long userId, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"user"})
+    @Query("""
+            SELECT v FROM Video v
+            WHERE v.user.id = :userId
+              AND (v.createdAt < :cursorCreatedAt OR (v.createdAt = :cursorCreatedAt AND v.id < :cursorId))
+            ORDER BY v.createdAt DESC, v.id DESC
+            """)
+    List<Video> findByUserIdBeforeCursor(
+            @Param("userId") Long userId,
+            @Param("cursorCreatedAt") LocalDateTime cursorCreatedAt,
+            @Param("cursorId") Long cursorId,
+            Pageable pageable);
 
     // Recommender Query: Find videos that this user has NOT viewed yet, ordered by likesCount DESC (paginated)
-    @Query("SELECT v FROM Video v JOIN FETCH v.user WHERE v.id NOT IN (SELECT vi.videoId FROM View vi WHERE vi.userId = :userId) ORDER BY v.likesCount DESC")
+    @Query("""
+            SELECT v FROM Video v JOIN FETCH v.user
+            WHERE v.id NOT IN (SELECT vi.videoId FROM View vi WHERE vi.userId = :userId)
+              AND v.id IN (
+                  SELECT MAX(v2.id) FROM Video v2
+                  WHERE v2.id NOT IN (SELECT vi2.videoId FROM View vi2 WHERE vi2.userId = :userId)
+                  GROUP BY v2.videoUrl
+              )
+            ORDER BY COALESCE(v.likesCount, 0) DESC, v.id DESC
+            """)
     List<Video> findRecommendedVideosForUser(@Param("userId") Long userId, Pageable pageable);
+
+    @Query("""
+            SELECT v FROM Video v JOIN FETCH v.user
+            WHERE v.id NOT IN (SELECT vi.videoId FROM View vi WHERE vi.userId = :userId)
+              AND v.id IN (
+                  SELECT MAX(v2.id) FROM Video v2
+                  WHERE v2.id NOT IN (SELECT vi2.videoId FROM View vi2 WHERE vi2.userId = :userId)
+                  GROUP BY v2.videoUrl
+              )
+              AND (COALESCE(v.likesCount, 0) < :cursorLikesCount
+                   OR (COALESCE(v.likesCount, 0) = :cursorLikesCount AND v.id < :cursorId))
+            ORDER BY COALESCE(v.likesCount, 0) DESC, v.id DESC
+            """)
+    List<Video> findRecommendedVideosForUserAfterCursor(
+            @Param("userId") Long userId,
+            @Param("cursorLikesCount") int cursorLikesCount,
+            @Param("cursorId") Long cursorId,
+            Pageable pageable);
 
     // Scalar query: get only likesCount without loading the Video entity
     @Query("SELECT v.likesCount FROM Video v WHERE v.id = :id")

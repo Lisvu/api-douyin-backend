@@ -11,15 +11,17 @@ import com.douyin.api.repository.UserRelationRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
 import com.douyin.api.service.RedisCacheService;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.Duration;
 import java.util.*;
@@ -64,7 +66,7 @@ public class AdminController {
     @GetMapping("/request-logs")
     public ResponseEntity<Map<String, Object>> getLogs(
             @RequestParam(value = "limit", defaultValue = "100") int limit,
-            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "cursor", required = false) String cursor,
             HttpServletRequest request) {
 
         // 权限校验
@@ -77,17 +79,20 @@ public class AdminController {
 
         // 参数校验和边界保护
         int MAX_PAGE_SIZE = 100;
-        int safePage = Math.max(1, page);                             // page 最小为 1
         int safeLimit = Math.min(MAX_PAGE_SIZE, Math.max(1, limit)); // limit 限制在 1-100 之间
-        String cacheKey = "admin:logs:page:" + safePage + ":limit:" + safeLimit;
+        String cacheKey = "admin:logs:cursor:" + (cursor == null ? "first" : cursor) + ":limit:" + safeLimit;
         Optional<Map<String, Object>> cached = redisCacheService.getMap(cacheKey);
         if (cached.isPresent()) {
             return ResponseEntity.ok(cached.get());
         }
 
-        // 分页查询，按时间倒序
-        Pageable pageable = PageRequest.of(safePage - 1, safeLimit, Sort.by("timestamp").descending());
-        Page<com.douyin.api.model.RequestLog> dbLogs = requestLogRepository.findAllByOrderByTimestampDesc(pageable);
+        Pageable pageable = PageRequest.of(0, safeLimit + 1);
+        CursorParts cursorParts = decodeCursor(cursor);
+        List<com.douyin.api.model.RequestLog> rawLogs = cursorParts == null
+                ? requestLogRepository.findAllByOrderByTimestampDescIdDesc(pageable)
+                : requestLogRepository.findBeforeCursor(cursorParts.createdAt(), cursorParts.id(), pageable);
+        boolean hasMore = rawLogs.size() > safeLimit;
+        List<com.douyin.api.model.RequestLog> dbLogs = hasMore ? rawLogs.subList(0, safeLimit) : rawLogs;
 
         List<Map<String, Object>> formattedLogs = new ArrayList<>();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -109,14 +114,38 @@ public class AdminController {
 
         response.put("success", true);
         response.put("logs", formattedLogs);
-        response.put("total", dbLogs.getTotalElements());
-        response.put("totalPages", dbLogs.getTotalPages());
-        response.put("currentPage", safePage);
         response.put("limit", safeLimit);  // 返回实际使用的 limit，方便前端知道限制
+        response.put("hasMore", hasMore);
+        response.put("nextCursor", hasMore && !dbLogs.isEmpty()
+                ? encodeCursor(dbLogs.get(dbLogs.size() - 1).getTimestamp(), dbLogs.get(dbLogs.size() - 1).getId())
+                : null);
 
         redisCacheService.put(cacheKey, response, LOGS_TTL);
         return ResponseEntity.ok(response);
     }
+
+    private String encodeCursor(LocalDateTime timestamp, Long id) {
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(
+                (timestamp + "|" + id).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private CursorParts decodeCursor(String cursor) {
+        if (cursor == null || cursor.isBlank()) {
+            return null;
+        }
+        try {
+            String decoded = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
+            String[] parts = decoded.split("\\|", 2);
+            if (parts.length != 2) {
+                throw new IllegalArgumentException("Invalid cursor format");
+            }
+            return new CursorParts(LocalDateTime.parse(parts[0]), Long.parseLong(parts[1]));
+        } catch (RuntimeException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid cursor");
+        }
+    }
+
+    private record CursorParts(LocalDateTime createdAt, Long id) {}
 
     @PostMapping("/public-samples/redistribute-owners")
     @Transactional

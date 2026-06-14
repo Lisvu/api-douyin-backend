@@ -19,7 +19,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -27,12 +26,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.File;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.*;
 
 @RestController
@@ -89,17 +90,19 @@ public class VideoController {
     // Get Recommended Videos (Exclude viewed, order by likes count DESC)
     @GetMapping("/videos/recommendations")
     @Tag(name = "F02/F03 推荐流", description = "组员 A：推荐列表与切换数据")
-    @Operation(summary = "获取推荐视频列表（F02）", description = "排除已观看视频，按 likeCount 降序。F03 前端本地切换索引，不单独请求 next/prev。")
+    @Operation(summary = "获取推荐视频列表（F02）", description = "排除已观看视频，按 likeCount 降序，使用游标分页返回下一批。")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "成功返回 videos、allViewed、totalCount"),
             @ApiResponse(responseCode = "401", description = "未登录")
     })
     public ResponseEntity<Map<String, Object>> getRecommendations(
+            @RequestParam(value = "cursor", required = false) String cursor,
             @RequestParam(value = "limit", defaultValue = "20") int limit,
             HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         Map<String, Object> response = new HashMap<>();
-        String cacheKey = recommendationsCacheKey(userId, limit);
+        int safeLimit = Math.min(Math.max(limit, 1), 50);
+        String cacheKey = recommendationsCacheKey(userId, cursor, safeLimit);
 
         try {
             Optional<Map<String, Object>> cached = redisCacheService.getMap(cacheKey);
@@ -107,29 +110,48 @@ public class VideoController {
                 return ResponseEntity.ok(cached.get());
             }
 
-            // Fetch videos with pagination to avoid loading all at once
-            List<Video> rawVideos = videoRepository.findRecommendedVideosForUser(userId, PageRequest.of(0, limit));
+            RecommendationCursorParts cursorParts = decodeRecommendationCursor(cursor);
+            Pageable pageable = PageRequest.of(0, safeLimit + 1);
+            List<Video> rawVideos = cursorParts == null
+                    ? videoRepository.findRecommendedVideosForUser(userId, pageable)
+                    : videoRepository.findRecommendedVideosForUserAfterCursor(
+                            userId,
+                            cursorParts.likesCount(),
+                            cursorParts.id(),
+                            pageable);
+            boolean hasMore = rawVideos.size() > safeLimit;
+            List<Video> pageVideos = hasMore ? rawVideos.subList(0, safeLimit) : rawVideos;
             long totalVideosCount = videoRepository.count();
 
             // Batch query: get all liked video IDs in a single DB round-trip
-            List<Long> videoIds = rawVideos.stream().map(Video::getId).toList();
+            List<Long> videoIds = pageVideos.stream().map(Video::getId).toList();
             Set<Long> likedVideoIds = videoIds.isEmpty()
                     ? Collections.emptySet()
                     : new HashSet<>(likeRepository.findLikedVideoIds(userId, videoIds));
 
             List<Map<String, Object>> mappedVideos = new ArrayList<>();
-            for (Video v : rawVideos) {
+            for (Video v : pageVideos) {
                 boolean liked = likedVideoIds.contains(v.getId());
                 mappedVideos.add(VideoResponseMapper.toFeedItem(v, liked));
             }
+
+            Map<String, Object> pagination = new HashMap<>();
+            pagination.put("limit", safeLimit);
+            pagination.put("hasMore", hasMore);
+            pagination.put("nextCursor", hasMore && !pageVideos.isEmpty()
+                    ? encodeRecommendationCursor(pageVideos.get(pageVideos.size() - 1))
+                    : null);
 
             response.put("success", true);
             response.put("videos", mappedVideos);
             response.put("allViewed", mappedVideos.isEmpty());
             response.put("totalCount", totalVideosCount);
+            response.put("pagination", pagination);
 
             redisCacheService.put(cacheKey, response, RECOMMENDATIONS_TTL);
             return ResponseEntity.ok(response);
+        } catch (ResponseStatusException e) {
+            throw e;
         } catch (Exception e) {
             response.put("success", false);
             response.put("message", "Error compiling recommendations: " + e.getMessage());
@@ -393,41 +415,46 @@ public class VideoController {
         }
     }
 
-    // View My Videos (Paginated)
+    // View My Videos (Cursor Paginated)
     @GetMapping("/users/me/videos")
-    @Cacheable(value = "userVideos", key = "#request.getAttribute('userId') + '-' + #page")
+    @Cacheable(value = "userVideos", key = "#request.getAttribute('userId') + '-' + (#cursor ?: 'first') + '-' + #limit")
     public ResponseEntity<Map<String, Object>> getMyVideos(
-            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "cursor", required = false) String cursor,
             @RequestParam(value = "limit", defaultValue = "6") int limit,
             HttpServletRequest request) {
 
         Long userId = (Long) request.getAttribute("userId");
         Map<String, Object> response = new HashMap<>();
 
-        // Spring PageRequest is 0-indexed, but the request API is 1-indexed
-        int adjustedPage = Math.max(0, page - 1);
-        Pageable pageable = PageRequest.of(adjustedPage, limit);
+        int safeLimit = Math.min(Math.max(limit, 1), 50);
+        Pageable pageable = PageRequest.of(0, safeLimit + 1);
 
         try {
-            Page<Video> videoPage = videoRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable);
+            CursorParts cursorParts = decodeCursor(cursor);
+            List<Video> rawVideos = cursorParts == null
+                    ? videoRepository.findByUserIdOrderByCreatedAtDescIdDesc(userId, pageable)
+                    : videoRepository.findByUserIdBeforeCursor(userId, cursorParts.createdAt(), cursorParts.id(), pageable);
+            boolean hasMore = rawVideos.size() > safeLimit;
+            List<Video> pageVideos = hasMore ? rawVideos.subList(0, safeLimit) : rawVideos;
 
             // Batch query: get all liked video IDs in a single DB round-trip
-            List<Long> videoIds = videoPage.getContent().stream().map(Video::getId).toList();
+            List<Long> videoIds = pageVideos.stream().map(Video::getId).toList();
             Set<Long> likedVideoIds = videoIds.isEmpty()
                     ? Collections.emptySet()
                     : likeRepository.findLikedVideoIds(userId, videoIds);
 
             List<Map<String, Object>> mappedVideos = new ArrayList<>();
-            for (Video video : videoPage.getContent()) {
+            for (Video video : pageVideos) {
                 boolean liked = likedVideoIds.contains(video.getId());
                 mappedVideos.add(VideoResponseMapper.toFeedItem(video, liked));
             }
 
             Map<String, Object> pagination = new HashMap<>();
-            pagination.put("page", page);
-            pagination.put("limit", limit);
-            pagination.put("total", videoPage.getTotalElements());
-            pagination.put("totalPages", videoPage.getTotalPages());
+            pagination.put("limit", safeLimit);
+            pagination.put("hasMore", hasMore);
+            pagination.put("nextCursor", hasMore && !pageVideos.isEmpty()
+                    ? encodeCursor(pageVideos.get(pageVideos.size() - 1).getCreatedAt(), pageVideos.get(pageVideos.size() - 1).getId())
+                    : null);
 
             response.put("success", true);
             response.put("videos", mappedVideos);
@@ -440,6 +467,53 @@ public class VideoController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
+
+    private String encodeCursor(LocalDateTime timestamp, Long id) {
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(
+                (timestamp + "|" + id).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String encodeRecommendationCursor(Video video) {
+        int likesCount = video.getLikesCount() == null ? 0 : video.getLikesCount();
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(
+                (likesCount + "|" + video.getId()).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private CursorParts decodeCursor(String cursor) {
+        if (cursor == null || cursor.isBlank()) {
+            return null;
+        }
+        try {
+            String decoded = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
+            String[] parts = decoded.split("\\|", 2);
+            if (parts.length != 2) {
+                throw new IllegalArgumentException("Invalid cursor format");
+            }
+            return new CursorParts(LocalDateTime.parse(parts[0]), Long.parseLong(parts[1]));
+        } catch (RuntimeException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid cursor");
+        }
+    }
+
+    private record CursorParts(LocalDateTime createdAt, Long id) {}
+
+    private RecommendationCursorParts decodeRecommendationCursor(String cursor) {
+        if (cursor == null || cursor.isBlank()) {
+            return null;
+        }
+        try {
+            String decoded = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
+            String[] parts = decoded.split("\\|", 2);
+            if (parts.length != 2) {
+                throw new IllegalArgumentException("Invalid recommendation cursor format");
+            }
+            return new RecommendationCursorParts(Integer.parseInt(parts[0]), Long.parseLong(parts[1]));
+        } catch (RuntimeException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid cursor");
+        }
+    }
+
+    private record RecommendationCursorParts(int likesCount, Long id) {}
 
     // Delete My Video (owner permission checking)
     @DeleteMapping("/videos/{id}")
@@ -528,8 +602,10 @@ public class VideoController {
         return videos;
     }
 
-    private String recommendationsCacheKey(Long userId, int limit) {
-        return recommendationsCachePrefix(userId) + ":limit:" + limit;
+    private String recommendationsCacheKey(Long userId, String cursor, int limit) {
+        return recommendationsCachePrefix(userId)
+                + ":cursor:" + (cursor == null || cursor.isBlank() ? "first" : cursor)
+                + ":limit:" + limit;
     }
 
     private String recommendationsCachePrefix(Long userId) {

@@ -8,6 +8,7 @@ import com.douyin.api.repository.LikeRepository;
 import com.douyin.api.repository.UserRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
+import com.douyin.api.service.RedisCacheService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -48,6 +49,8 @@ class RecommendFeedApiTest {
     private LikeRepository likeRepository;
     @Mock
     private ViewRepository viewRepository;
+    @Mock
+    private RedisCacheService redisCacheService;
 
     @InjectMocks
     private VideoController videoController;
@@ -70,6 +73,7 @@ class RecommendFeedApiTest {
 
     @Test
     void recommendationsReturnVideosSortedByLikesDesc() throws Exception {
+        when(redisCacheService.getMap(any())).thenReturn(Optional.empty());
         when(videoRepository.findRecommendedVideosForUser(eq(1L), any(Pageable.class))).thenReturn(List.of(highLikes, lowLikes));
         when(videoRepository.count()).thenReturn(6L);
         when(likeRepository.findLikedVideoIds(eq(1L), any())).thenReturn(Set.of(3L));
@@ -83,7 +87,28 @@ class RecommendFeedApiTest {
                 .andExpect(jsonPath("$.videos[0].liked").value(false))
                 .andExpect(jsonPath("$.videos[1].liked").value(true))
                 .andExpect(jsonPath("$.allViewed").value(false))
-                .andExpect(jsonPath("$.totalCount").value(6));
+                .andExpect(jsonPath("$.totalCount").value(6))
+                .andExpect(jsonPath("$.pagination.hasMore").value(false))
+                .andExpect(jsonPath("$.pagination.nextCursor").isEmpty());
+    }
+
+    @Test
+    void recommendationsReturnNextCursorWhenMoreVideosExist() throws Exception {
+        when(redisCacheService.getMap(any())).thenReturn(Optional.empty());
+        when(videoRepository.findRecommendedVideosForUser(eq(1L), any(Pageable.class))).thenReturn(List.of(highLikes, lowLikes));
+        when(videoRepository.count()).thenReturn(6L);
+        when(likeRepository.findLikedVideoIds(eq(1L), any())).thenReturn(Set.of());
+
+        mockMvc.perform(get("/api/v1/videos/recommendations")
+                        .param("limit", "1")
+                        .requestAttr("userId", 1L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.videos.length()").value(1))
+                .andExpect(jsonPath("$.videos[0].id").value(2))
+                .andExpect(jsonPath("$.pagination.limit").value(1))
+                .andExpect(jsonPath("$.pagination.hasMore").value(true))
+                .andExpect(jsonPath("$.pagination.nextCursor").isString());
     }
 
     @Test

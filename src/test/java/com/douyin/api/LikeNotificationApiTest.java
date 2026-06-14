@@ -16,8 +16,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -116,12 +114,11 @@ class LikeNotificationApiTest {
             }
         };
 
-        Page<LikeNotificationProjection> page = new PageImpl<>(List.of(notification));
         when(userRepository.findById(2L)).thenReturn(Optional.of(owner));
-        when(likeRepository.findReceivedLikeNotifications(eq(2L), any(Pageable.class))).thenReturn(page);
+        when(likeRepository.findReceivedLikeNotificationsCursor(eq(2L), any(Pageable.class))).thenReturn(List.of(notification));
         when(likeRepository.countReceivedLikes(2L)).thenReturn(1L);
 
-        mockMvc.perform(authenticatedGet("/api/v1/users/me/like-notifications?page=1&limit=10"))
+        mockMvc.perform(authenticatedGet("/api/v1/users/me/like-notifications?limit=10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.unreadCount").value(1))
@@ -129,8 +126,8 @@ class LikeNotificationApiTest {
                 .andExpect(jsonPath("$.notifications[0].likerUsername").value("fan"))
                 .andExpect(jsonPath("$.notifications[0].videoTitle").value("My video"))
                 .andExpect(jsonPath("$.notifications[0].read").value(false))
-                .andExpect(jsonPath("$.pagination.page").value(1))
-                .andExpect(jsonPath("$.pagination.total").value(1));
+                .andExpect(jsonPath("$.pagination.limit").value(10))
+                .andExpect(jsonPath("$.pagination.hasMore").value(false));
     }
 
     @Test

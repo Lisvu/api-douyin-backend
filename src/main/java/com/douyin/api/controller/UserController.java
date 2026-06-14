@@ -15,23 +15,25 @@ import com.douyin.api.service.RedisCacheService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -94,22 +96,27 @@ public class UserController {
 
     @GetMapping("/me/like-notifications")
     public ResponseEntity<Map<String, Object>> getLikeNotifications(
-            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "cursor", required = false) String cursor,
             @RequestParam(value = "limit", defaultValue = "10") int limit,
             HttpServletRequest request) {
         User user = getCurrentUserOrThrow(request);
         Long ownerId = user.getId();
         LocalDateTime readAfter = user.getLastLikeNotificationReadAt();
 
-        int safePage = Math.max(page, 1);
         int safeLimit = Math.min(Math.max(limit, 1), 50);
-        Pageable pageable = PageRequest.of(safePage - 1, safeLimit);
+        Pageable pageable = PageRequest.of(0, safeLimit + 1);
 
-        Page<LikeNotificationProjection> notificationPage =
-                likeRepository.findReceivedLikeNotifications(ownerId, pageable);
+        CursorParts cursorParts = decodeCursor(cursor);
+        List<LikeNotificationProjection> rawNotifications = cursorParts == null
+                ? likeRepository.findReceivedLikeNotificationsCursor(ownerId, pageable)
+                : likeRepository.findReceivedLikeNotificationsBeforeCursor(ownerId, cursorParts.createdAt(), cursorParts.id(), pageable);
+        boolean hasMore = rawNotifications.size() > safeLimit;
+        List<LikeNotificationProjection> pageNotifications = hasMore
+                ? rawNotifications.subList(0, safeLimit)
+                : rawNotifications;
 
         List<Map<String, Object>> notifications = new ArrayList<>();
-        for (LikeNotificationProjection item : notificationPage.getContent()) {
+        for (LikeNotificationProjection item : pageNotifications) {
             Map<String, Object> notification = new HashMap<>();
             notification.put("likeId", item.getLikeId());
             notification.put("likerUsername", item.getLikerUsername());
@@ -126,10 +133,11 @@ public class UserController {
                 : likeRepository.countReceivedLikesAfter(ownerId, readAfter);
 
         Map<String, Object> pagination = new HashMap<>();
-        pagination.put("page", safePage);
         pagination.put("limit", safeLimit);
-        pagination.put("total", notificationPage.getTotalElements());
-        pagination.put("totalPages", notificationPage.getTotalPages());
+        pagination.put("hasMore", hasMore);
+        pagination.put("nextCursor", hasMore && !pageNotifications.isEmpty()
+                ? encodeCursor(pageNotifications.get(pageNotifications.size() - 1).getLikedAt(), pageNotifications.get(pageNotifications.size() - 1).getLikeId())
+                : null);
 
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
@@ -138,6 +146,29 @@ public class UserController {
         response.put("pagination", pagination);
         return ResponseEntity.ok(response);
     }
+
+    private String encodeCursor(LocalDateTime timestamp, Long id) {
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(
+                (timestamp + "|" + id).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private CursorParts decodeCursor(String cursor) {
+        if (cursor == null || cursor.isBlank()) {
+            return null;
+        }
+        try {
+            String decoded = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
+            String[] parts = decoded.split("\\|", 2);
+            if (parts.length != 2) {
+                throw new IllegalArgumentException("Invalid cursor format");
+            }
+            return new CursorParts(LocalDateTime.parse(parts[0]), Long.parseLong(parts[1]));
+        } catch (RuntimeException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid cursor");
+        }
+    }
+
+    private record CursorParts(LocalDateTime createdAt, Long id) {}
 
     @PutMapping("/me/like-notifications/read")
     @Transactional

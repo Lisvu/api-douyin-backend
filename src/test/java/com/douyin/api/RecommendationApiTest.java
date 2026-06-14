@@ -7,6 +7,7 @@ import com.douyin.api.repository.LikeRepository;
 import com.douyin.api.repository.UserRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
+import com.douyin.api.service.RedisCacheService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -49,6 +50,8 @@ class RecommendationApiTest {
 
     @Mock
     private ViewRepository viewRepository;
+    @Mock
+    private RedisCacheService redisCacheService;
 
     @InjectMocks
     private VideoController videoController;
@@ -71,6 +74,7 @@ class RecommendationApiTest {
 
     @Test
     void getRecommendationsReturnsVideosSortedByLikesExcludingViewed() throws Exception {
+        when(redisCacheService.getMap(any())).thenReturn(Optional.empty());
         when(videoRepository.findRecommendedVideosForUser(eq(1L), any(Pageable.class))).thenReturn(List.of(topVideo, secondVideo));
         when(videoRepository.count()).thenReturn(6L);
         when(likeRepository.findLikedVideoIds(eq(1L), any())).thenReturn(Set.of(4L));
@@ -85,11 +89,14 @@ class RecommendationApiTest {
                 .andExpect(jsonPath("$.videos[1].id").value(4))
                 .andExpect(jsonPath("$.videos[1].liked").value(true))
                 .andExpect(jsonPath("$.allViewed").value(false))
-                .andExpect(jsonPath("$.totalCount").value(6));
+                .andExpect(jsonPath("$.totalCount").value(6))
+                .andExpect(jsonPath("$.pagination.hasMore").value(false))
+                .andExpect(jsonPath("$.pagination.nextCursor").isEmpty());
     }
 
     @Test
     void getRecommendationsReturnsAllViewedWhenListEmpty() throws Exception {
+        when(redisCacheService.getMap(any())).thenReturn(Optional.empty());
         when(videoRepository.findRecommendedVideosForUser(eq(1L), any(Pageable.class))).thenReturn(List.of());
         when(videoRepository.count()).thenReturn(6L);
 
@@ -98,7 +105,8 @@ class RecommendationApiTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.videos").isEmpty())
                 .andExpect(jsonPath("$.allViewed").value(true))
-                .andExpect(jsonPath("$.totalCount").value(6));
+                .andExpect(jsonPath("$.totalCount").value(6))
+                .andExpect(jsonPath("$.pagination.hasMore").value(false));
     }
 
     @Test
