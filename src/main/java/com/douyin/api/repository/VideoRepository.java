@@ -10,6 +10,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -75,4 +76,9 @@ public interface VideoRepository extends JpaRepository<Video, Long> {
     @Modifying
     @Query("UPDATE Video v SET v.likesCount = v.likesCount + :delta WHERE v.id = :id")
     int incrementLikesCount(@Param("id") Long id, @Param("delta") int delta);
+
+    // Find videos by a set of IDs (for liked-videos and shared-videos panels)
+    @EntityGraph(attributePaths = {"user"})
+    @Query("SELECT v FROM Video v WHERE v.id IN :ids ORDER BY v.createdAt DESC")
+    List<Video> findByIdInOrderByCreatedAtDesc(@Param("ids") Collection<Long> ids);
 }

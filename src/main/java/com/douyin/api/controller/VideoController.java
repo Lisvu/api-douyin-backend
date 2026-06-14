@@ -1,10 +1,12 @@
 package com.douyin.api.controller;
 
 import com.douyin.api.model.Like;
+import com.douyin.api.model.Share;
 import com.douyin.api.model.User;
 import com.douyin.api.model.Video;
 import com.douyin.api.model.View;
 import com.douyin.api.repository.LikeRepository;
+import com.douyin.api.repository.ShareRepository;
 import com.douyin.api.repository.UserRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
@@ -44,6 +46,7 @@ public class VideoController {
     private final VideoRepository videoRepository;
     private final LikeRepository likeRepository;
     private final ViewRepository viewRepository;
+    private final ShareRepository shareRepository;
     private final RedisCacheService redisCacheService;
     private static final Duration RECOMMENDATIONS_TTL = Duration.ofSeconds(30);
     private static final int MAX_PUBLIC_SAMPLE_IMPORT_COUNT = 100;
@@ -75,11 +78,13 @@ public class VideoController {
                            VideoRepository videoRepository,
                            LikeRepository likeRepository,
                            ViewRepository viewRepository,
+                           ShareRepository shareRepository,
                            RedisCacheService redisCacheService) {
         this.userRepository = userRepository;
         this.videoRepository = videoRepository;
         this.likeRepository = likeRepository;
         this.viewRepository = viewRepository;
+        this.shareRepository = shareRepository;
         this.redisCacheService = redisCacheService;
     }
 
@@ -559,6 +564,70 @@ public class VideoController {
         response.put("success", true);
         response.put("message", "Video deleted");
         response.put("data", new HashMap<>());
+        return ResponseEntity.ok(response);
+    }
+
+    // ----------------------------------------------------
+    // SHARE VIDEO — Forward a video to another user
+    // ----------------------------------------------------
+
+    @PostMapping("/videos/{id}/share")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> shareVideo(
+            @PathVariable("id") Long videoId,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request) {
+        Long fromUserId = (Long) request.getAttribute("userId");
+        Map<String, Object> response = new HashMap<>();
+
+        if (fromUserId == null) {
+            response.put("success", false);
+            response.put("message", "Not authenticated.");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+        }
+
+        Object toUserIdObj = body.get("toUserId");
+        if (toUserIdObj == null) {
+            response.put("success", false);
+            response.put("message", "toUserId is required.");
+            return ResponseEntity.badRequest().body(response);
+        }
+        Long toUserId = toUserIdObj instanceof Integer
+                ? Long.valueOf((Integer) toUserIdObj)
+                : Long.valueOf(toUserIdObj.toString());
+
+        if (toUserId.equals(fromUserId)) {
+            response.put("success", false);
+            response.put("message", "Cannot share a video to yourself.");
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        // Check video exists
+        if (!videoRepository.existsById(videoId)) {
+            response.put("success", false);
+            response.put("message", "Video not found.");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+        }
+
+        // Check target user exists
+        if (!userRepository.existsById(toUserId)) {
+            response.put("success", false);
+            response.put("message", "Target user not found.");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+        }
+
+        // Check duplicate
+        if (shareRepository.existsByFromUserIdAndToUserIdAndVideoId(fromUserId, toUserId, videoId)) {
+            response.put("success", false);
+            response.put("message", "You have already shared this video with that user.");
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        shareRepository.save(new Share(fromUserId, toUserId, videoId));
+
+        response.put("success", true);
+        response.put("message", "Video shared successfully!");
+        response.put("share", Map.of("fromUserId", fromUserId, "toUserId", toUserId, "videoId", videoId));
         return ResponseEntity.ok(response);
     }
 

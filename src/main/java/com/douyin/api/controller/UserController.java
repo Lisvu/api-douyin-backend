@@ -1,17 +1,21 @@
 package com.douyin.api.controller;
 
 import com.douyin.api.exception.ApiException;
+import com.douyin.api.model.Like;
+import com.douyin.api.model.Share;
 import com.douyin.api.model.User;
 import com.douyin.api.model.Video;
 import com.douyin.api.repository.CommentRepository;
 import com.douyin.api.repository.FavoriteRepository;
 import com.douyin.api.repository.LikeNotificationProjection;
 import com.douyin.api.repository.LikeRepository;
+import com.douyin.api.repository.ShareRepository;
 import com.douyin.api.repository.UserRepository;
 import com.douyin.api.repository.UserRelationRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
 import com.douyin.api.service.RedisCacheService;
+import com.douyin.api.util.VideoResponseMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
@@ -51,6 +55,7 @@ public class UserController {
     private final FavoriteRepository favoriteRepository;
     private final CommentRepository commentRepository;
     private final UserRelationRepository userRelationRepository;
+    private final ShareRepository shareRepository;
     private final RedisCacheService redisCacheService;
 
     public UserController(UserRepository userRepository,
@@ -60,6 +65,7 @@ public class UserController {
                           FavoriteRepository favoriteRepository,
                           CommentRepository commentRepository,
                           UserRelationRepository userRelationRepository,
+                          ShareRepository shareRepository,
                           RedisCacheService redisCacheService) {
         this.userRepository = userRepository;
         this.videoRepository = videoRepository;
@@ -68,6 +74,7 @@ public class UserController {
         this.favoriteRepository = favoriteRepository;
         this.commentRepository = commentRepository;
         this.userRelationRepository = userRelationRepository;
+        this.shareRepository = shareRepository;
         this.redisCacheService = redisCacheService;
     }
 
@@ -199,11 +206,14 @@ public class UserController {
             viewRepository.deleteByVideoIdIn(userVideoIds);
             favoriteRepository.deleteByVideoIdIn(userVideoIds);
             commentRepository.deleteByVideoIdIn(userVideoIds);
+            shareRepository.deleteByVideoIdIn(userVideoIds);
         }
         likeRepository.deleteByUserId(userId);
         viewRepository.deleteByUserId(userId);
         favoriteRepository.deleteByUserId(userId);
         commentRepository.deleteByUserId(userId);
+        shareRepository.deleteByFromUserId(userId);
+        shareRepository.deleteByToUserId(userId);
         userRelationRepository.deleteByFollowerIdOrFollowingId(userId, userId);
 
         for (Video video : userVideos) {
@@ -220,6 +230,161 @@ public class UserController {
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("message", "Your account has been deleted successfully, along with all related videos and interactions.");
+        return ResponseEntity.ok(response);
+    }
+
+    // ----------------------------------------------------
+    // LIKED VIDEOS — View my liked videos
+    // ----------------------------------------------------
+
+    @GetMapping("/me/liked-videos")
+    public ResponseEntity<Map<String, Object>> getLikedVideos(
+            @RequestParam(value = "cursor", required = false) String cursor,
+            @RequestParam(value = "limit", defaultValue = "8") int limit,
+            HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        if (userId == null) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "User context is missing.");
+        }
+
+        int safeLimit = Math.min(Math.max(limit, 1), 50);
+        Pageable pageable = PageRequest.of(0, safeLimit + 1);
+
+        CursorParts cursorParts = decodeCursor(cursor);
+        List<Like> rawLikes = cursorParts == null
+                ? likeRepository.findByUserIdOrderByCreatedAtDescIdDesc(userId, pageable)
+                : likeRepository.findByUserIdBeforeCursor(userId, cursorParts.createdAt(), cursorParts.id(), pageable);
+        boolean hasMore = rawLikes.size() > safeLimit;
+        List<Like> pageLikes = hasMore ? rawLikes.subList(0, safeLimit) : rawLikes;
+
+        List<Map<String, Object>> videos = new ArrayList<>();
+        if (!pageLikes.isEmpty()) {
+            List<Long> videoIds = pageLikes.stream().map(Like::getVideoId).toList();
+            List<Video> videoEntities = videoRepository.findByIdInOrderByCreatedAtDesc(videoIds);
+            // Preserve the order from pageLikes
+            Map<Long, Video> videoMap = new HashMap<>();
+            for (Video v : videoEntities) {
+                videoMap.put(v.getId(), v);
+            }
+            for (Like like : pageLikes) {
+                Video v = videoMap.get(like.getVideoId());
+                if (v != null) {
+                    videos.add(VideoResponseMapper.toFeedItem(v, true));
+                }
+            }
+        }
+
+        Map<String, Object> pagination = new HashMap<>();
+        pagination.put("limit", safeLimit);
+        pagination.put("hasMore", hasMore);
+        pagination.put("nextCursor", hasMore && !pageLikes.isEmpty()
+                ? encodeCursor(pageLikes.get(pageLikes.size() - 1).getCreatedAt(),
+                               pageLikes.get(pageLikes.size() - 1).getId())
+                : null);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("videos", videos);
+        response.put("pagination", pagination);
+        return ResponseEntity.ok(response);
+    }
+
+    // ----------------------------------------------------
+    // USER SEARCH — Find users by username/displayName
+    // ----------------------------------------------------
+
+    @GetMapping("/search")
+    public ResponseEntity<Map<String, Object>> searchUsers(
+            @RequestParam("q") String keyword,
+            HttpServletRequest request) {
+        Map<String, Object> response = new HashMap<>();
+
+        if (keyword == null || keyword.trim().isEmpty()) {
+            response.put("success", false);
+            response.put("message", "Search keyword is required.");
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        Pageable pageable = PageRequest.of(0, 20);
+        List<User> users = userRepository.searchByKeyword(keyword.trim(), pageable);
+
+        List<Map<String, Object>> results = new ArrayList<>();
+        for (User u : users) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("id", u.getId());
+            item.put("username", u.getUsername());
+            item.put("displayName", u.getDisplayName());
+            item.put("avatarUrl", u.getAvatarUrl());
+            results.add(item);
+        }
+
+        response.put("success", true);
+        response.put("users", results);
+        return ResponseEntity.ok(response);
+    }
+
+    // ----------------------------------------------------
+    // SHARED VIDEOS — Videos shared with me
+    // ----------------------------------------------------
+
+    @GetMapping("/me/shared-videos")
+    public ResponseEntity<Map<String, Object>> getSharedVideos(
+            @RequestParam(value = "cursor", required = false) String cursor,
+            @RequestParam(value = "limit", defaultValue = "8") int limit,
+            HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        if (userId == null) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "User context is missing.");
+        }
+
+        int safeLimit = Math.min(Math.max(limit, 1), 50);
+        Pageable pageable = PageRequest.of(0, safeLimit + 1);
+
+        CursorParts cursorParts = decodeCursor(cursor);
+        List<Share> rawShares = cursorParts == null
+                ? shareRepository.findByToUserIdOrderByCreatedAtDesc(userId, pageable)
+                : shareRepository.findByToUserIdBeforeCursor(userId, cursorParts.createdAt(), cursorParts.id(), pageable);
+        boolean hasMore = rawShares.size() > safeLimit;
+        List<Share> pageShares = hasMore ? rawShares.subList(0, safeLimit) : rawShares;
+
+        List<Map<String, Object>> videos = new ArrayList<>();
+        if (!pageShares.isEmpty()) {
+            List<Long> videoIds = pageShares.stream().map(Share::getVideoId).toList();
+            List<Video> videoEntities = videoRepository.findByIdInOrderByCreatedAtDesc(videoIds);
+            Map<Long, Video> videoMap = new HashMap<>();
+            for (Video v : videoEntities) {
+                videoMap.put(v.getId(), v);
+            }
+            // Build sender map for display
+            List<Long> senderIds = pageShares.stream().map(Share::getFromUserId).distinct().toList();
+            Map<Long, String> senderNames = new HashMap<>();
+            for (Long sid : senderIds) {
+                userRepository.findById(sid).ifPresent(u -> senderNames.put(sid, u.getUsername()));
+            }
+
+            for (Share share : pageShares) {
+                Video v = videoMap.get(share.getVideoId());
+                if (v != null) {
+                    Map<String, Object> item = VideoResponseMapper.toFeedItem(v, false);
+                    item.put("shared_by", senderNames.getOrDefault(share.getFromUserId(), "unknown"));
+                    item.put("shared_at", share.getCreatedAt().toString());
+                    videos.add(item);
+                }
+            }
+        }
+
+        Map<String, Object> pagination = new HashMap<>();
+        pagination.put("limit", safeLimit);
+        pagination.put("hasMore", hasMore);
+        pagination.put("nextCursor", hasMore && !pageShares.isEmpty()
+                ? encodeCursor(pageShares.get(pageShares.size() - 1).getCreatedAt(),
+                               pageShares.get(pageShares.size() - 1).getId())
+                : null);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("videos", videos);
+        response.put("pagination", pagination);
         return ResponseEntity.ok(response);
     }
 

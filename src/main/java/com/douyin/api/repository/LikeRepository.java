@@ -24,6 +24,20 @@ public interface LikeRepository extends JpaRepository<Like, Long> {
     @Query("select l.videoId from Like l where l.userId = :userId and l.videoId in :videoIds")
     Set<Long> findLikedVideoIds(@Param("userId") Long userId, @Param("videoIds") Collection<Long> videoIds);
 
+    // Cursor pagination: get all liked videos for a user (for "我的喜欢")
+    List<Like> findByUserIdOrderByCreatedAtDescIdDesc(Long userId, Pageable pageable);
+
+    @Query("""
+            SELECT l FROM Like l
+            WHERE l.userId = :userId
+              AND (l.createdAt < :cursorCreatedAt OR (l.createdAt = :cursorCreatedAt AND l.id < :cursorId))
+            ORDER BY l.createdAt DESC, l.id DESC
+            """)
+    List<Like> findByUserIdBeforeCursor(@Param("userId") Long userId,
+                                        @Param("cursorCreatedAt") LocalDateTime cursorCreatedAt,
+                                        @Param("cursorId") Long cursorId,
+                                        Pageable pageable);
+
     @Query("""
             SELECT l.id AS likeId,
                    l.userId AS likerUserId,
