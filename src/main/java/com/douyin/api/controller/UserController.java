@@ -460,34 +460,6 @@ public class UserController {
         return ResponseEntity.ok(response);
     }
 
-    @DeleteMapping("/me/views")
-    @Transactional
-    public ResponseEntity<Map<String, Object>> resetViewHistory(HttpServletRequest request) {
-        Long userId = (Long) request.getAttribute("userId");
-        if (userId == null) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "User context is missing.");
-        }
-        viewRepository.deleteByUserId(userId);
-        redisCacheService.evictPrefix("recommendations:" + userId);
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
-        response.put("message", "已清空您的观看记录，推荐列表将重新排序。");
-        return ResponseEntity.ok(response);
-    }
-
-    @GetMapping("/me/videos")
-    public ResponseEntity<Map<String, Object>> getMyVideos(
-            @RequestParam(value = "cursor", required = false) String cursor,
-            @RequestParam(value = "limit", defaultValue = "8") int limit,
-            HttpServletRequest request) {
-        Long userId = (Long) request.getAttribute("userId");
-        if (userId == null) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "User context is missing.");
-        }
-        return ResponseEntity.ok(buildPublishedVideosPage(userId, userId, cursor, limit));
-    }
-
     private User getCurrentUserOrThrow(HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
         if (userId == null) {

@@ -11,11 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 @RestController
 @RequestMapping("/api/v1/users")
@@ -253,17 +249,25 @@ public class FollowController {
     private List<Map<String, Object>> buildUserList(
             List<UserRelation> relations, boolean getFollowing, Long currentUserId) {
         List<Map<String, Object>> users = new ArrayList<>();
+
+        // 获取所有互关的好友ID集合
+        List<UserRelation> mutualRelations = userRelationRepository.findMutualFollows(currentUserId);
+        Set<Long> mutualSet = new HashSet<>();
+        for (UserRelation rel : mutualRelations) {
+            mutualSet.add(rel.getFollowingId());
+        }
+
         for (UserRelation rel : relations) {
             Long targetId = getFollowing ? rel.getFollowingId() : rel.getFollowerId();
             userRepository.findById(targetId).ifPresent(u -> {
-                boolean isMutual = userRelationRepository
-                        .findByFollowerIdAndFollowingId(currentUserId, targetId).isPresent();
+                // 正确判断：只有在互关集合中才是好友
+                boolean isFriend = mutualSet.contains(targetId);
                 Map<String, Object> item = new HashMap<>();
                 item.put("id", u.getId());
                 item.put("username", u.getUsername());
                 item.put("displayName", u.getDisplayName());
                 item.put("avatarUrl", u.getAvatarUrl());
-                item.put("isFriend", isMutual);
+                item.put("isFriend", isFriend);
                 users.add(item);
             });
         }

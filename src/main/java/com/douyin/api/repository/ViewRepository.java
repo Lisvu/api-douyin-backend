@@ -28,4 +28,6 @@ public interface ViewRepository extends JpaRepository<View, Long> {
     @Transactional
     @Query("DELETE FROM View v WHERE v.videoId IN :videoIds")
     void deleteByVideoIdIn(@Param("videoIds") Collection<Long> videoIds);
+
+    long countByUserId(Long userId);
 }
