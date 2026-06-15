@@ -57,7 +57,9 @@ class DeleteVideoApiTest {
                 viewRepository,
                 shareRepository,
                 commentRepository,
-                new NoOpRedisCacheService()
+                null,  // FavoriteRepository — not used in delete test
+                new NoOpRedisCacheService(),
+                TestMediaStorage.create()
         );
         mockMvc = MockMvcBuilders.standaloneSetup(videoController).build();
 

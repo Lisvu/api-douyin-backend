@@ -71,7 +71,9 @@ class LikeApiTest {
                 viewRepository,
                 shareRepository,
                 commentRepository,
-                new NoOpRedisCacheService()
+                null,  // FavoriteRepository — not used in like test
+                new NoOpRedisCacheService(),
+                TestMediaStorage.create()
         );
         mockMvc = MockMvcBuilders.standaloneSetup(videoController).build();
 

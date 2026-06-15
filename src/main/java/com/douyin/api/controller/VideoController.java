@@ -8,11 +8,13 @@ import com.douyin.api.model.Video;
 import com.douyin.api.model.View;
 import com.douyin.api.repository.CommentItemProjection;
 import com.douyin.api.repository.CommentRepository;
+import com.douyin.api.repository.FavoriteRepository;
 import com.douyin.api.repository.LikeRepository;
 import com.douyin.api.repository.ShareRepository;
 import com.douyin.api.repository.UserRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
+import com.douyin.api.service.MediaStorageService;
 import com.douyin.api.service.RedisCacheService;
 import com.douyin.api.util.LocalMediaAvailability;
 import com.douyin.api.util.VideoResponseMapper;
@@ -43,7 +45,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.time.Duration;
@@ -60,7 +61,9 @@ public class VideoController {
     private final ViewRepository viewRepository;
     private final ShareRepository shareRepository;
     private final CommentRepository commentRepository;
+    private final FavoriteRepository favoriteRepository;
     private final RedisCacheService redisCacheService;
+    private final MediaStorageService mediaStorageService;
     private static final Duration RECOMMENDATIONS_TTL = Duration.ofSeconds(30);
     private static final int MAX_PUBLIC_SAMPLE_IMPORT_COUNT = 100;
     private static final String[] PUBLIC_SAMPLE_VIDEO_URLS = {
@@ -84,23 +87,24 @@ public class VideoController {
             "城市夜景", "自然风光", "运动瞬间", "旅行记录", "美食探店",
             "科技演示", "学习日常", "音乐节奏", "生活片段", "创意剪辑"
     };
-    private static final org.slf4j.Logger log =
-            org.slf4j.LoggerFactory.getLogger(VideoController.class);
-
     public VideoController(UserRepository userRepository,
                            VideoRepository videoRepository,
                            LikeRepository likeRepository,
                            ViewRepository viewRepository,
                            ShareRepository shareRepository,
                            CommentRepository commentRepository,
-                           RedisCacheService redisCacheService) {
+                           FavoriteRepository favoriteRepository,
+                           RedisCacheService redisCacheService,
+                           MediaStorageService mediaStorageService) {
         this.userRepository = userRepository;
         this.videoRepository = videoRepository;
         this.likeRepository = likeRepository;
         this.viewRepository = viewRepository;
         this.shareRepository = shareRepository;
         this.commentRepository = commentRepository;
+        this.favoriteRepository = favoriteRepository;
         this.redisCacheService = redisCacheService;
+        this.mediaStorageService = mediaStorageService;
     }
 
     // ----------------------------------------------------
@@ -614,37 +618,18 @@ public class VideoController {
             }
             User user = optionalUser.get();
 
-            String basePath = System.getProperty("user.dir");
-            File videoDir = new File(basePath, "public/uploads/videos/");
-            File coverDir = new File(basePath, "public/uploads/covers/");
-
-            if (!videoDir.exists()) videoDir.mkdirs();
-            if (!coverDir.exists()) coverDir.mkdirs();
-
-            String videoExt = getFileExtension(videoFile.getOriginalFilename(), ".mp4");
             String uniqueSuffix = System.currentTimeMillis() + "-" + Math.round(Math.random() * 1e9);
+            String videoExt = MediaStorageService.getFileExtension(videoFile.getOriginalFilename(), ".mp4");
             String savedVideoName = "video-" + uniqueSuffix + videoExt;
-            File targetVideoFile = new File(videoDir, savedVideoName);
-            videoFile.transferTo(targetVideoFile);
-
-            String videoUrl = "/uploads/videos/" + savedVideoName;
+            String videoUrl = mediaStorageService.storeUpload(videoFile, "videos", savedVideoName);
 
             String coverUrl;
             if (coverFile != null && !coverFile.isEmpty()) {
-                String coverExt = getFileExtension(coverFile.getOriginalFilename(), ".jpg");
+                String coverExt = MediaStorageService.getFileExtension(coverFile.getOriginalFilename(), ".jpg");
                 String savedCoverName = "cover-" + uniqueSuffix + coverExt;
-                File targetCoverFile = new File(coverDir, savedCoverName);
-                coverFile.transferTo(targetCoverFile);
-                coverUrl = "/uploads/covers/" + savedCoverName;
+                coverUrl = mediaStorageService.storeUpload(coverFile, "covers", savedCoverName);
             } else {
-                int randomHue1 = (int) (Math.random() * 360);
-                int randomHue2 = (randomHue1 + 120) % 360;
-                String displayTitle = title.length() > 12 ? title.substring(0, 12) : title;
-                String encodedTitle = URLEncoder.encode(displayTitle, StandardCharsets.UTF_8);
-                coverUrl = String.format(
-                        "https://placehold.co/600x800/g/png?text=%s&bg=linear-gradient(135deg,hsl(%d,80%%,40%%),hsl(%d,80%%,30%%))&color=fff",
-                        encodedTitle, randomHue1, randomHue2
-                );
+                coverUrl = mediaStorageService.storeGeneratedCover(title, "covers", "cover-" + uniqueSuffix + ".jpg");
             }
 
             // Create Video Entity
@@ -818,11 +803,71 @@ public class VideoController {
         redisCacheService.evict("admin:stats");
 
         // 事务外删本地文件
-        deleteLocalFile(video.getVideoUrl(), "/uploads/videos/");
-        deleteLocalFile(video.getCoverUrl(), "/uploads/covers/");
+        mediaStorageService.deleteMedia(video.getVideoUrl());
+        mediaStorageService.deleteMedia(video.getCoverUrl());
 
         response.put("success", true);
         response.put("message", "Video deleted");
+        response.put("data", new HashMap<>());
+        return ResponseEntity.ok(response);
+    }
+
+    // Batch delete own videos
+    @PostMapping("/videos/batch-delete")
+    @Transactional
+    @CacheEvict(value = "userVideos", allEntries = true)
+    public ResponseEntity<Map<String, Object>> batchDeleteVideos(
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request) {
+
+        Long userId = (Long) request.getAttribute("userId");
+        Map<String, Object> response = new LinkedHashMap<>();
+
+        @SuppressWarnings("unchecked")
+        List<Integer> rawIds = (List<Integer>) body.get("videoIds");
+        if (rawIds == null || rawIds.isEmpty()) {
+            response.put("success", false);
+            response.put("message", "videoIds is required and must be non-empty");
+            response.put("data", new HashMap<>());
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        List<Long> videoIds = rawIds.stream().map(Integer::longValue).toList();
+
+        List<Video> videos = videoRepository.findAllById(videoIds);
+        if (videos.size() != videoIds.size()) {
+            response.put("success", false);
+            response.put("message", "部分视频ID无效");
+            response.put("data", new HashMap<>());
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        for (Video video : videos) {
+            if (!video.getUser().getId().equals(userId)) {
+                response.put("success", false);
+                response.put("message", "视频 " + video.getId() + " 不属于你，无法删除");
+                response.put("data", new HashMap<>());
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+            }
+        }
+
+        likeRepository.deleteByVideoIdIn(videoIds);
+        viewRepository.deleteByVideoIdIn(videoIds);
+        favoriteRepository.deleteByVideoIdIn(videoIds);
+        commentRepository.deleteByVideoIdIn(videoIds);
+        shareRepository.deleteByVideoIdIn(videoIds);
+        videoRepository.deleteAll(videos);
+
+        redisCacheService.evictPrefix("recommendations:");
+        redisCacheService.evict("admin:stats");
+
+        for (Video video : videos) {
+            mediaStorageService.deleteMedia(video.getVideoUrl());
+            mediaStorageService.deleteMedia(video.getCoverUrl());
+        }
+
+        response.put("success", true);
+        response.put("message", "成功删除 " + videos.size() + " 个视频");
         response.put("data", new HashMap<>());
         return ResponseEntity.ok(response);
     }
@@ -894,19 +939,6 @@ public class VideoController {
     // ----------------------------------------------------
     // PRIVATE HELPERS
     // ----------------------------------------------------
-
-    private void deleteLocalFile(String url, String expectedPrefix) {
-        if (url == null || !url.startsWith(expectedPrefix)) return;
-        try {
-            java.nio.file.Path path = java.nio.file.Paths.get(System.getProperty("user.dir"), "public" + url);
-            boolean deleted = java.nio.file.Files.deleteIfExists(path);
-            if (!deleted) {
-                log.warn("File not found, skip delete: {}", path);
-            }
-        } catch (IOException e) {
-            log.warn("Failed to delete file: {}", url, e);
-        }
-    }
 
     private String buildDownloadFilename(Video video) {
         String title = video.getTitle() == null ? "video" : video.getTitle().replaceAll("[\\\\/:*?\"<>|]", "_").trim();

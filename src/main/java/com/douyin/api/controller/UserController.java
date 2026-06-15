@@ -14,6 +14,7 @@ import com.douyin.api.repository.UserRepository;
 import com.douyin.api.repository.UserRelationRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
+import com.douyin.api.service.MediaStorageService;
 import com.douyin.api.service.RedisCacheService;
 import com.douyin.api.util.VideoResponseMapper;
 import jakarta.servlet.http.HttpServletRequest;
@@ -47,6 +48,7 @@ public class UserController {
     private final UserRelationRepository userRelationRepository;
     private final ShareRepository shareRepository;
     private final RedisCacheService redisCacheService;
+    private final MediaStorageService mediaStorageService;
 
     public UserController(UserRepository userRepository,
                           VideoRepository videoRepository,
@@ -56,7 +58,8 @@ public class UserController {
                           CommentRepository commentRepository,
                           UserRelationRepository userRelationRepository,
                           ShareRepository shareRepository,
-                          RedisCacheService redisCacheService) {
+                          RedisCacheService redisCacheService,
+                          MediaStorageService mediaStorageService) {
         this.userRepository = userRepository;
         this.videoRepository = videoRepository;
         this.likeRepository = likeRepository;
@@ -66,6 +69,7 @@ public class UserController {
         this.userRelationRepository = userRelationRepository;
         this.shareRepository = shareRepository;
         this.redisCacheService = redisCacheService;
+        this.mediaStorageService = mediaStorageService;
     }
 
     @GetMapping("/me")
@@ -506,16 +510,7 @@ public class UserController {
     }
 
     private void deleteLocalFilesForVideo(Video video) {
-        deleteIfLocalUpload(video.getVideoUrl());
-        deleteIfLocalUpload(video.getCoverUrl());
-    }
-
-    private void deleteIfLocalUpload(String url) {
-        if (url != null && url.startsWith("/uploads/")) {
-            File file = new File(System.getProperty("user.dir"), "public" + url);
-            if (file.exists()) {
-                file.delete();
-            }
-        }
+        mediaStorageService.deleteMedia(video.getVideoUrl());
+        mediaStorageService.deleteMedia(video.getCoverUrl());
     }
 }
