@@ -24,6 +24,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -38,10 +39,12 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/v1/users")
@@ -191,6 +194,47 @@ public class UserController {
         return ResponseEntity.ok(response);
     }
 
+    // ----------------------------------------------------
+    // USER PROFILE — View any user's public profile
+    // ----------------------------------------------------
+
+    @GetMapping("/{id}")
+    public ResponseEntity<Map<String, Object>> getUserProfile(@PathVariable("id") Long id) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "User not found."));
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("user", userProfileToMap(user));
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{id}/videos")
+    public ResponseEntity<Map<String, Object>> getUserPublishedVideos(
+            @PathVariable("id") Long id,
+            @RequestParam(value = "cursor", required = false) String cursor,
+            @RequestParam(value = "limit", defaultValue = "8") int limit,
+            HttpServletRequest request) {
+        if (!userRepository.existsById(id)) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "User not found.");
+        }
+        Long viewerId = (Long) request.getAttribute("userId");
+        return ResponseEntity.ok(buildPublishedVideosPage(id, viewerId, cursor, limit));
+    }
+
+    @GetMapping("/{id}/liked-videos")
+    public ResponseEntity<Map<String, Object>> getUserLikedVideos(
+            @PathVariable("id") Long id,
+            @RequestParam(value = "cursor", required = false) String cursor,
+            @RequestParam(value = "limit", defaultValue = "8") int limit,
+            HttpServletRequest request) {
+        if (!userRepository.existsById(id)) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "User not found.");
+        }
+        Long viewerId = (Long) request.getAttribute("userId");
+        return ResponseEntity.ok(buildLikedVideosPage(id, viewerId, cursor, limit));
+    }
+
     @DeleteMapping("/me")
     @Transactional
     @CacheEvict(value = "users", key = "#request.getAttribute('userId')")
@@ -246,14 +290,17 @@ public class UserController {
         if (userId == null) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "User context is missing.");
         }
+        return ResponseEntity.ok(buildLikedVideosPage(userId, userId, cursor, limit));
+    }
 
+    private Map<String, Object> buildLikedVideosPage(Long ownerId, Long viewerId, String cursor, int limit) {
         int safeLimit = Math.min(Math.max(limit, 1), 50);
         Pageable pageable = PageRequest.of(0, safeLimit + 1);
 
         CursorParts cursorParts = decodeCursor(cursor);
         List<Like> rawLikes = cursorParts == null
-                ? likeRepository.findByUserIdOrderByCreatedAtDescIdDesc(userId, pageable)
-                : likeRepository.findByUserIdBeforeCursor(userId, cursorParts.createdAt(), cursorParts.id(), pageable);
+                ? likeRepository.findByUserIdOrderByCreatedAtDescIdDesc(ownerId, pageable)
+                : likeRepository.findByUserIdBeforeCursor(ownerId, cursorParts.createdAt(), cursorParts.id(), pageable);
         boolean hasMore = rawLikes.size() > safeLimit;
         List<Like> pageLikes = hasMore ? rawLikes.subList(0, safeLimit) : rawLikes;
 
@@ -261,15 +308,19 @@ public class UserController {
         if (!pageLikes.isEmpty()) {
             List<Long> videoIds = pageLikes.stream().map(Like::getVideoId).toList();
             List<Video> videoEntities = videoRepository.findByIdInOrderByCreatedAtDesc(videoIds);
-            // Preserve the order from pageLikes
             Map<Long, Video> videoMap = new HashMap<>();
             for (Video v : videoEntities) {
                 videoMap.put(v.getId(), v);
             }
+            Set<Long> likedByViewer = viewerId == null
+                    ? Collections.emptySet()
+                    : likeRepository.findLikedVideoIds(viewerId, videoIds);
+
             for (Like like : pageLikes) {
                 Video v = videoMap.get(like.getVideoId());
                 if (v != null) {
-                    videos.add(VideoResponseMapper.toFeedItem(v, true));
+                    boolean liked = likedByViewer.contains(v.getId());
+                    videos.add(VideoResponseMapper.toFeedItem(v, liked));
                 }
             }
         }
@@ -286,7 +337,44 @@ public class UserController {
         response.put("success", true);
         response.put("videos", videos);
         response.put("pagination", pagination);
-        return ResponseEntity.ok(response);
+        return response;
+    }
+
+    private Map<String, Object> buildPublishedVideosPage(Long ownerId, Long viewerId, String cursor, int limit) {
+        int safeLimit = Math.min(Math.max(limit, 1), 50);
+        Pageable pageable = PageRequest.of(0, safeLimit + 1);
+
+        CursorParts cursorParts = decodeCursor(cursor);
+        List<Video> rawVideos = cursorParts == null
+                ? videoRepository.findByUserIdOrderByCreatedAtDescIdDesc(ownerId, pageable)
+                : videoRepository.findByUserIdBeforeCursor(ownerId, cursorParts.createdAt(), cursorParts.id(), pageable);
+        boolean hasMore = rawVideos.size() > safeLimit;
+        List<Video> pageVideos = hasMore ? rawVideos.subList(0, safeLimit) : rawVideos;
+
+        List<Long> videoIds = pageVideos.stream().map(Video::getId).toList();
+        Set<Long> likedByViewer = videoIds.isEmpty() || viewerId == null
+                ? Collections.emptySet()
+                : likeRepository.findLikedVideoIds(viewerId, videoIds);
+
+        List<Map<String, Object>> videos = new ArrayList<>();
+        for (Video video : pageVideos) {
+            boolean liked = likedByViewer.contains(video.getId());
+            videos.add(VideoResponseMapper.toFeedItem(video, liked));
+        }
+
+        Map<String, Object> pagination = new HashMap<>();
+        pagination.put("limit", safeLimit);
+        pagination.put("hasMore", hasMore);
+        pagination.put("nextCursor", hasMore && !pageVideos.isEmpty()
+                ? encodeCursor(pageVideos.get(pageVideos.size() - 1).getCreatedAt(),
+                               pageVideos.get(pageVideos.size() - 1).getId())
+                : null);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("videos", videos);
+        response.put("pagination", pagination);
+        return response;
     }
 
     // ----------------------------------------------------
@@ -409,6 +497,14 @@ public class UserController {
         userData.put("createdAt", user.getCreatedAt() == null ? null : user.getCreatedAt().toString());
         userData.put("updatedAt", user.getUpdatedAt() == null ? null : user.getUpdatedAt().toString());
         return userData;
+    }
+
+    private Map<String, Object> userProfileToMap(User user) {
+        Map<String, Object> profile = userToMap(user);
+        Long totalLikes = videoRepository.sumLikesCountByUserId(user.getId());
+        profile.put("totalLikesReceived", totalLikes == null ? 0 : totalLikes);
+        profile.put("publishedVideoCount", videoRepository.countByUserId(user.getId()));
+        return profile;
     }
 
     private String userProfileCacheKey(Long userId) {
