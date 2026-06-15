@@ -1,6 +1,7 @@
 package com.douyin.api.config;
 
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
@@ -12,9 +13,12 @@ import java.io.File;
 public class WebConfig implements WebMvcConfigurer {
 
     private final JwtInterceptor jwtInterceptor;
+    private final String localUploadDir;
 
-    public WebConfig(JwtInterceptor jwtInterceptor) {
+    public WebConfig(JwtInterceptor jwtInterceptor,
+                     @Value("${app.media.local-upload-dir:public/uploads}") String localUploadDir) {
         this.jwtInterceptor = jwtInterceptor;
+        this.localUploadDir = localUploadDir;
     }
 
     @Override
@@ -36,8 +40,10 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
         // Ensure the upload directory exists (absolute path)
-        String basePath = System.getProperty("user.dir");
-        File uploadDir = new File(basePath, "public/uploads/");
+        File uploadDir = new File(localUploadDir);
+        if (!uploadDir.isAbsolute()) {
+            uploadDir = new File(System.getProperty("user.dir"), localUploadDir);
+        }
         if (!uploadDir.exists()) {
             uploadDir.mkdirs();
         }

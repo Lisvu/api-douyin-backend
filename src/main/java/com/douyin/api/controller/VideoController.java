@@ -13,6 +13,7 @@ import com.douyin.api.repository.ShareRepository;
 import com.douyin.api.repository.UserRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
+import com.douyin.api.service.MediaStorageService;
 import com.douyin.api.service.RedisCacheService;
 import com.douyin.api.util.VideoResponseMapper;
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,9 +34,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.io.File;
 import java.io.IOException;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -52,6 +51,7 @@ public class VideoController {
     private final ShareRepository shareRepository;
     private final CommentRepository commentRepository;
     private final RedisCacheService redisCacheService;
+    private final MediaStorageService mediaStorageService;
     private static final Duration RECOMMENDATIONS_TTL = Duration.ofSeconds(30);
     private static final int MAX_PUBLIC_SAMPLE_IMPORT_COUNT = 100;
     private static final String[] PUBLIC_SAMPLE_VIDEO_URLS = {
@@ -75,16 +75,14 @@ public class VideoController {
             "城市夜景", "自然风光", "运动瞬间", "旅行记录", "美食探店",
             "科技演示", "学习日常", "音乐节奏", "生活片段", "创意剪辑"
     };
-    private static final org.slf4j.Logger log =
-            org.slf4j.LoggerFactory.getLogger(VideoController.class);
-
     public VideoController(UserRepository userRepository,
                            VideoRepository videoRepository,
                            LikeRepository likeRepository,
                            ViewRepository viewRepository,
                            ShareRepository shareRepository,
                            CommentRepository commentRepository,
-                           RedisCacheService redisCacheService) {
+                           RedisCacheService redisCacheService,
+                           MediaStorageService mediaStorageService) {
         this.userRepository = userRepository;
         this.videoRepository = videoRepository;
         this.likeRepository = likeRepository;
@@ -92,6 +90,7 @@ public class VideoController {
         this.shareRepository = shareRepository;
         this.commentRepository = commentRepository;
         this.redisCacheService = redisCacheService;
+        this.mediaStorageService = mediaStorageService;
     }
 
     // ----------------------------------------------------
@@ -543,41 +542,18 @@ public class VideoController {
             }
             User user = optionalUser.get();
 
-            // Set up save directories (absolute path to avoid Tomcat temp dir issues)
-            String basePath = System.getProperty("user.dir");
-            File videoDir = new File(basePath, "public/uploads/videos/");
-            File coverDir = new File(basePath, "public/uploads/covers/");
-
-            if (!videoDir.exists()) videoDir.mkdirs();
-            if (!coverDir.exists()) coverDir.mkdirs();
-
-            // Save Video File
-            String videoExt = getFileExtension(videoFile.getOriginalFilename(), ".mp4");
             String uniqueSuffix = System.currentTimeMillis() + "-" + Math.round(Math.random() * 1e9);
+            String videoExt = MediaStorageService.getFileExtension(videoFile.getOriginalFilename(), ".mp4");
             String savedVideoName = "video-" + uniqueSuffix + videoExt;
-            File targetVideoFile = new File(videoDir, savedVideoName);
-            videoFile.transferTo(targetVideoFile);
+            String videoUrl = mediaStorageService.storeUpload(videoFile, "videos", savedVideoName);
 
-            String videoUrl = "/uploads/videos/" + savedVideoName;
-
-            // Save Cover File
             String coverUrl;
             if (coverFile != null && !coverFile.isEmpty()) {
-                String coverExt = getFileExtension(coverFile.getOriginalFilename(), ".jpg");
+                String coverExt = MediaStorageService.getFileExtension(coverFile.getOriginalFilename(), ".jpg");
                 String savedCoverName = "cover-" + uniqueSuffix + coverExt;
-                File targetCoverFile = new File(coverDir, savedCoverName);
-                coverFile.transferTo(targetCoverFile);
-                coverUrl = "/uploads/covers/" + savedCoverName;
+                coverUrl = mediaStorageService.storeUpload(coverFile, "covers", savedCoverName);
             } else {
-                // Generate a random gradient
-                int randomHue1 = (int) (Math.random() * 360);
-                int randomHue2 = (randomHue1 + 120) % 360;
-                String displayTitle = title.length() > 12 ? title.substring(0, 12) : title;
-                String encodedTitle = URLEncoder.encode(displayTitle, StandardCharsets.UTF_8);
-                coverUrl = String.format(
-                        "https://placehold.co/600x800/g/png?text=%s&bg=linear-gradient(135deg,hsl(%d,80%%,40%%),hsl(%d,80%%,30%%))&color=fff",
-                        encodedTitle, randomHue1, randomHue2
-                );
+                coverUrl = mediaStorageService.storeGeneratedCover(title, "covers", "cover-" + uniqueSuffix + ".jpg");
             }
 
             // Create Video Entity
@@ -702,8 +678,8 @@ public class VideoController {
         redisCacheService.evict("admin:stats");
 
         // 事务外删本地文件
-        deleteLocalFile(video.getVideoUrl(), "/uploads/videos/");
-        deleteLocalFile(video.getCoverUrl(), "/uploads/covers/");
+        mediaStorageService.deleteMedia(video.getVideoUrl());
+        mediaStorageService.deleteMedia(video.getCoverUrl());
 
         response.put("success", true);
         response.put("message", "Video deleted");
@@ -778,26 +754,6 @@ public class VideoController {
     // ----------------------------------------------------
     // PRIVATE HELPERS
     // ----------------------------------------------------
-
-    private void deleteLocalFile(String url, String expectedPrefix) {
-        if (url == null || !url.startsWith(expectedPrefix)) return;
-        try {
-            java.nio.file.Path path = java.nio.file.Paths.get(System.getProperty("user.dir"), "public" + url);
-            boolean deleted = java.nio.file.Files.deleteIfExists(path);
-            if (!deleted) {
-                log.warn("File not found, skip delete: {}", path);
-            }
-        } catch (IOException e) {
-            log.warn("Failed to delete file: {}", url, e);
-        }
-    }
-
-    private String getFileExtension(String originalFilename, String fallback) {
-        if (originalFilename == null) return fallback;
-        int lastDotIndex = originalFilename.lastIndexOf('.');
-        if (lastDotIndex == -1) return fallback;
-        return originalFilename.substring(lastDotIndex).toLowerCase();
-    }
 
     private List<Video> createPublicSampleVideos(User creator, int startIndex, int count) {
         List<Video> videos = new ArrayList<>();
