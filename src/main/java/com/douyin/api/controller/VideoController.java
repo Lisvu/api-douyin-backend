@@ -1,10 +1,13 @@
 package com.douyin.api.controller;
 
+import com.douyin.api.model.Comment;
 import com.douyin.api.model.Like;
 import com.douyin.api.model.Share;
 import com.douyin.api.model.User;
 import com.douyin.api.model.Video;
 import com.douyin.api.model.View;
+import com.douyin.api.repository.CommentItemProjection;
+import com.douyin.api.repository.CommentRepository;
 import com.douyin.api.repository.LikeRepository;
 import com.douyin.api.repository.ShareRepository;
 import com.douyin.api.repository.UserRepository;
@@ -47,6 +50,7 @@ public class VideoController {
     private final LikeRepository likeRepository;
     private final ViewRepository viewRepository;
     private final ShareRepository shareRepository;
+    private final CommentRepository commentRepository;
     private final RedisCacheService redisCacheService;
     private static final Duration RECOMMENDATIONS_TTL = Duration.ofSeconds(30);
     private static final int MAX_PUBLIC_SAMPLE_IMPORT_COUNT = 100;
@@ -79,12 +83,14 @@ public class VideoController {
                            LikeRepository likeRepository,
                            ViewRepository viewRepository,
                            ShareRepository shareRepository,
+                           CommentRepository commentRepository,
                            RedisCacheService redisCacheService) {
         this.userRepository = userRepository;
         this.videoRepository = videoRepository;
         this.likeRepository = likeRepository;
         this.viewRepository = viewRepository;
         this.shareRepository = shareRepository;
+        this.commentRepository = commentRepository;
         this.redisCacheService = redisCacheService;
     }
 
@@ -133,11 +139,12 @@ public class VideoController {
             Set<Long> likedVideoIds = videoIds.isEmpty()
                     ? Collections.emptySet()
                     : new HashSet<>(likeRepository.findLikedVideoIds(userId, videoIds));
+            Map<Long, Long> commentCounts = loadCommentCounts(videoIds);
 
             List<Map<String, Object>> mappedVideos = new ArrayList<>();
             for (Video v : pageVideos) {
                 boolean liked = likedVideoIds.contains(v.getId());
-                mappedVideos.add(VideoResponseMapper.toFeedItem(v, liked));
+                mappedVideos.add(VideoResponseMapper.toFeedItem(v, liked, commentCounts.getOrDefault(v.getId(), 0L)));
             }
 
             Map<String, Object> pagination = new HashMap<>();
@@ -318,6 +325,123 @@ public class VideoController {
     }
 
     // ----------------------------------------------------
+    // VIDEO COMMENTS
+    // ----------------------------------------------------
+
+    @GetMapping("/videos/{id}/comments")
+    public ResponseEntity<Map<String, Object>> getVideoComments(
+            @PathVariable("id") Long videoId,
+            @RequestParam(value = "cursor", required = false) String cursor,
+            @RequestParam(value = "limit", defaultValue = "20") int limit) {
+        Map<String, Object> response = new HashMap<>();
+
+        if (!videoRepository.existsById(videoId)) {
+            response.put("success", false);
+            response.put("message", "Video not found.");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+        }
+
+        int safeLimit = Math.min(Math.max(limit, 1), 50);
+        Pageable pageable = PageRequest.of(0, safeLimit + 1);
+        CursorParts cursorParts = decodeCursor(cursor);
+        List<CommentItemProjection> rawComments = cursorParts == null
+                ? commentRepository.findTopLevelByVideoId(videoId, pageable)
+                : commentRepository.findTopLevelByVideoIdBeforeCursor(
+                        videoId, cursorParts.createdAt(), cursorParts.id(), pageable);
+        boolean hasMore = rawComments.size() > safeLimit;
+        List<CommentItemProjection> pageComments = hasMore
+                ? rawComments.subList(0, safeLimit)
+                : rawComments;
+
+        List<Map<String, Object>> comments = new ArrayList<>();
+        for (CommentItemProjection item : pageComments) {
+            Map<String, Object> comment = new HashMap<>();
+            comment.put("id", item.getId());
+            comment.put("videoId", item.getVideoId());
+            comment.put("userId", item.getUserId());
+            comment.put("username", item.getUsername());
+            comment.put("displayName", item.getDisplayName());
+            comment.put("avatarUrl", item.getAvatarUrl());
+            comment.put("content", item.getContent());
+            comment.put("createdAt", item.getCreatedAt());
+            comments.add(comment);
+        }
+
+        Map<String, Object> pagination = new HashMap<>();
+        pagination.put("limit", safeLimit);
+        pagination.put("hasMore", hasMore);
+        pagination.put("nextCursor", hasMore && !pageComments.isEmpty()
+                ? encodeCursor(pageComments.get(pageComments.size() - 1).getCreatedAt(),
+                               pageComments.get(pageComments.size() - 1).getId())
+                : null);
+
+        response.put("success", true);
+        response.put("comments", comments);
+        response.put("totalCount", commentRepository.countByVideoId(videoId));
+        response.put("pagination", pagination);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/videos/{id}/comments")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> createVideoComment(
+            @PathVariable("id") Long videoId,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        Map<String, Object> response = new HashMap<>();
+
+        if (userId == null) {
+            response.put("success", false);
+            response.put("message", "Not authenticated.");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+        }
+
+        if (!videoRepository.existsById(videoId)) {
+            response.put("success", false);
+            response.put("message", "Video not found.");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+        }
+
+        Object contentObj = body == null ? null : body.get("content");
+        String content = contentObj == null ? "" : contentObj.toString().trim();
+        if (content.isEmpty()) {
+            response.put("success", false);
+            response.put("message", "Comment content is required.");
+            return ResponseEntity.badRequest().body(response);
+        }
+        if (content.length() > 500) {
+            response.put("success", false);
+            response.put("message", "Comment content must be at most 500 characters.");
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        Comment comment = new Comment();
+        comment.setVideoId(videoId);
+        comment.setUserId(userId);
+        comment.setContent(content);
+        commentRepository.save(comment);
+        redisCacheService.evictPrefix("recommendations:");
+
+        User author = userRepository.findById(userId).orElse(null);
+        Map<String, Object> commentData = new HashMap<>();
+        commentData.put("id", comment.getId());
+        commentData.put("videoId", comment.getVideoId());
+        commentData.put("userId", comment.getUserId());
+        commentData.put("username", author != null ? author.getUsername() : "");
+        commentData.put("displayName", author != null ? author.getDisplayName() : "");
+        commentData.put("avatarUrl", author != null ? author.getAvatarUrl() : null);
+        commentData.put("content", comment.getContent());
+        commentData.put("createdAt", comment.getCreatedAt());
+
+        response.put("success", true);
+        response.put("message", "Comment posted.");
+        response.put("comment", commentData);
+        response.put("commentsCount", commentRepository.countByVideoId(videoId));
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    // ----------------------------------------------------
     // MY VIDEOS MANAGEMENT API ENDPOINTS
     // ----------------------------------------------------
 
@@ -447,11 +571,13 @@ public class VideoController {
             Set<Long> likedVideoIds = videoIds.isEmpty()
                     ? Collections.emptySet()
                     : likeRepository.findLikedVideoIds(userId, videoIds);
+            Map<Long, Long> commentCounts = loadCommentCounts(videoIds);
 
             List<Map<String, Object>> mappedVideos = new ArrayList<>();
             for (Video video : pageVideos) {
                 boolean liked = likedVideoIds.contains(video.getId());
-                mappedVideos.add(VideoResponseMapper.toFeedItem(video, liked));
+                mappedVideos.add(VideoResponseMapper.toFeedItem(
+                        video, liked, commentCounts.getOrDefault(video.getId(), 0L)));
             }
 
             Map<String, Object> pagination = new HashMap<>();
@@ -553,6 +679,7 @@ public class VideoController {
         // 事务内删关联记录 + 主记录
         likeRepository.deleteByVideoId(videoId);
         viewRepository.deleteByVideoId(videoId);
+        commentRepository.deleteByVideoIdIn(List.of(videoId));
         videoRepository.delete(video);
         redisCacheService.evictPrefix("recommendations:");
         redisCacheService.evict("admin:stats");
@@ -679,5 +806,16 @@ public class VideoController {
 
     private String recommendationsCachePrefix(Long userId) {
         return "recommendations:user:" + userId;
+    }
+
+    private Map<Long, Long> loadCommentCounts(Collection<Long> videoIds) {
+        if (videoIds == null || videoIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<Long, Long> counts = new HashMap<>();
+        for (Object[] row : commentRepository.countGroupByVideoIds(videoIds)) {
+            counts.put((Long) row[0], (Long) row[1]);
+        }
+        return counts;
     }
 }

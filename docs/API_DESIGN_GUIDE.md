@@ -122,6 +122,11 @@ GET /api/v1/admin/stats
 | 标记视频已观看 | `POST` | `/api/v1/videos/{id}/views` | 是 |
 | 重置观看记录 | `DELETE` | `/api/v1/users/me/views` | 是 |
 | 点赞或取消点赞（F04） | `PUT` | `/api/v1/videos/{id}/like` | 是 |
+| 查看视频评论 | `GET` | `/api/v1/videos/{id}/comments?cursor=&limit=20` | 是 |
+| 发表评论 | `POST` | `/api/v1/videos/{id}/comments` | 是 |
+| 查看用户主页 | `GET` | `/api/v1/users/{id}` | 是 |
+| 查看用户发布的视频 | `GET` | `/api/v1/users/{id}/videos?cursor=&limit=8` | 是 |
+| 查看用户点赞的视频 | `GET` | `/api/v1/users/{id}/liked-videos?cursor=&limit=8` | 是 |
 | 查看点赞通知（F14） | `GET` | `/api/v1/users/me/like-notifications?page=1&limit=10` | 是 |
 | 标记点赞通知已读（F14） | `PUT` | `/api/v1/users/me/like-notifications/read` | 是 |
 | 发布视频 | `POST` | `/api/v1/videos` | 是 |

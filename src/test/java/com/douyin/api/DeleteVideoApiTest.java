@@ -3,7 +3,9 @@ package com.douyin.api;
 import com.douyin.api.controller.VideoController;
 import com.douyin.api.model.User;
 import com.douyin.api.model.Video;
+import com.douyin.api.repository.CommentRepository;
 import com.douyin.api.repository.LikeRepository;
+import com.douyin.api.repository.ShareRepository;
 import com.douyin.api.repository.UserRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
@@ -38,6 +40,8 @@ class DeleteVideoApiTest {
     @Mock private VideoRepository videoRepository;
     @Mock private LikeRepository likeRepository;
     @Mock private ViewRepository viewRepository;
+    @Mock private ShareRepository shareRepository;
+    @Mock private CommentRepository commentRepository;
 
     private User owner;
     private User otherUser;
@@ -50,6 +54,8 @@ class DeleteVideoApiTest {
                 videoRepository,
                 likeRepository,
                 viewRepository,
+                shareRepository,
+                commentRepository,
                 new NoOpRedisCacheService()
         );
         mockMvc = MockMvcBuilders.standaloneSetup(videoController).build();
