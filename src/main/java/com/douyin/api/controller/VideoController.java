@@ -14,6 +14,7 @@ import com.douyin.api.repository.UserRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
 import com.douyin.api.service.RedisCacheService;
+import com.douyin.api.util.LocalMediaAvailability;
 import com.douyin.api.util.VideoResponseMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -26,17 +27,25 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -98,6 +107,62 @@ public class VideoController {
     // RECOMMENDER SYSTEM API ENDPOINTS
     // ----------------------------------------------------
 
+    @GetMapping("/videos/featured")
+    @Tag(name = "F02/F03 推荐流", description = "组员 A：推荐列表与切换数据")
+    @Operation(summary = "精选浏览网格", description = "按热度排序返回可播放视频，供精选页多列网格展示。")
+    public ResponseEntity<Map<String, Object>> browseVideos(
+            @RequestParam(value = "cursor", required = false) String cursor,
+            @RequestParam(value = "limit", defaultValue = "24") int limit,
+            HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        Map<String, Object> response = new HashMap<>();
+        int safeLimit = Math.min(Math.max(limit, 1), 50);
+
+        try {
+            RecommendationCursorParts cursorParts = decodeRecommendationCursor(cursor);
+            Pageable pageable = PageRequest.of(0, safeLimit + 1);
+            List<Video> rawVideos = cursorParts == null
+                    ? videoRepository.findBrowseVideos(pageable)
+                    : videoRepository.findBrowseVideosAfterCursor(
+                    cursorParts.likesCount(),
+                    cursorParts.id(),
+                    pageable);
+            boolean hasMore = rawVideos.size() > safeLimit;
+            List<Video> dbPageVideos = hasMore ? rawVideos.subList(0, safeLimit) : rawVideos;
+            List<Video> pageVideos = dbPageVideos.stream()
+                    .filter(v -> LocalMediaAvailability.isPlayableUrl(v.getVideoUrl()))
+                    .toList();
+
+            List<Long> videoIds = pageVideos.stream().map(Video::getId).toList();
+            Set<Long> likedVideoIds = videoIds.isEmpty()
+                    ? Collections.emptySet()
+                    : new HashSet<>(likeRepository.findLikedVideoIds(userId, videoIds));
+            Map<Long, Long> commentCounts = loadCommentCounts(videoIds);
+
+            List<Map<String, Object>> mappedVideos = new ArrayList<>();
+            for (Video v : pageVideos) {
+                boolean liked = likedVideoIds.contains(v.getId());
+                mappedVideos.add(VideoResponseMapper.toFeedItem(v, liked, commentCounts.getOrDefault(v.getId(), 0L)));
+            }
+
+            Map<String, Object> pagination = new HashMap<>();
+            pagination.put("limit", safeLimit);
+            pagination.put("hasMore", hasMore);
+            pagination.put("nextCursor", hasMore && !dbPageVideos.isEmpty()
+                    ? encodeRecommendationCursor(dbPageVideos.get(dbPageVideos.size() - 1))
+                    : null);
+
+            response.put("success", true);
+            response.put("videos", mappedVideos);
+            response.put("pagination", pagination);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("message", "Error loading browse videos: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
     @GetMapping("/videos/recommendations")
     @Tag(name = "F02/F03 推荐流", description = "组员 A：推荐列表与切换数据")
     @Operation(summary = "获取推荐视频列表（F02）", description = "排除已观看视频，按 likeCount 降序，使用游标分页返回下一批。")
@@ -130,7 +195,10 @@ public class VideoController {
                     cursorParts.id(),
                     pageable);
             boolean hasMore = rawVideos.size() > safeLimit;
-            List<Video> pageVideos = hasMore ? rawVideos.subList(0, safeLimit) : rawVideos;
+            List<Video> dbPageVideos = hasMore ? rawVideos.subList(0, safeLimit) : rawVideos;
+            List<Video> pageVideos = dbPageVideos.stream()
+                    .filter(v -> LocalMediaAvailability.isPlayableUrl(v.getVideoUrl()))
+                    .toList();
             long totalVideosCount = videoRepository.count();
 
             List<Long> videoIds = pageVideos.stream().map(Video::getId).toList();
@@ -148,8 +216,8 @@ public class VideoController {
             Map<String, Object> pagination = new HashMap<>();
             pagination.put("limit", safeLimit);
             pagination.put("hasMore", hasMore);
-            pagination.put("nextCursor", hasMore && !pageVideos.isEmpty()
-                    ? encodeRecommendationCursor(pageVideos.get(pageVideos.size() - 1))
+            pagination.put("nextCursor", hasMore && !dbPageVideos.isEmpty()
+                    ? encodeRecommendationCursor(dbPageVideos.get(dbPageVideos.size() - 1))
                     : null);
 
             response.put("success", true);
@@ -367,6 +435,9 @@ public class VideoController {
 
         List<Map<String, Object>> videoResults = new ArrayList<>();
         for (Video v : videoMap.values()) {
+            if (!LocalMediaAvailability.isPlayableUrl(v.getVideoUrl())) {
+                continue;
+            }
             boolean liked = likedVideoIds.contains(v.getId());
             videoResults.add(VideoResponseMapper.toFeedItem(v, liked));
         }
@@ -543,7 +614,6 @@ public class VideoController {
             }
             User user = optionalUser.get();
 
-            // Set up save directories (absolute path to avoid Tomcat temp dir issues)
             String basePath = System.getProperty("user.dir");
             File videoDir = new File(basePath, "public/uploads/videos/");
             File coverDir = new File(basePath, "public/uploads/covers/");
@@ -551,7 +621,6 @@ public class VideoController {
             if (!videoDir.exists()) videoDir.mkdirs();
             if (!coverDir.exists()) coverDir.mkdirs();
 
-            // Save Video File
             String videoExt = getFileExtension(videoFile.getOriginalFilename(), ".mp4");
             String uniqueSuffix = System.currentTimeMillis() + "-" + Math.round(Math.random() * 1e9);
             String savedVideoName = "video-" + uniqueSuffix + videoExt;
@@ -560,7 +629,6 @@ public class VideoController {
 
             String videoUrl = "/uploads/videos/" + savedVideoName;
 
-            // Save Cover File
             String coverUrl;
             if (coverFile != null && !coverFile.isEmpty()) {
                 String coverExt = getFileExtension(coverFile.getOriginalFilename(), ".jpg");
@@ -569,7 +637,6 @@ public class VideoController {
                 coverFile.transferTo(targetCoverFile);
                 coverUrl = "/uploads/covers/" + savedCoverName;
             } else {
-                // Generate a random gradient
                 int randomHue1 = (int) (Math.random() * 360);
                 int randomHue2 = (randomHue1 + 120) % 360;
                 String displayTitle = title.length() > 12 ? title.substring(0, 12) : title;
@@ -628,7 +695,10 @@ public class VideoController {
                     ? videoRepository.findByUserIdOrderByCreatedAtDescIdDesc(userId, pageable)
                     : videoRepository.findByUserIdBeforeCursor(userId, cursorParts.createdAt(), cursorParts.id(), pageable);
             boolean hasMore = rawVideos.size() > safeLimit;
-            List<Video> pageVideos = hasMore ? rawVideos.subList(0, safeLimit) : rawVideos;
+            List<Video> dbPageVideos = hasMore ? rawVideos.subList(0, safeLimit) : rawVideos;
+            List<Video> pageVideos = dbPageVideos.stream()
+                    .filter(v -> LocalMediaAvailability.isPlayableUrl(v.getVideoUrl()))
+                    .toList();
 
             // Batch query: get all liked video IDs in a single DB round-trip
             List<Long> videoIds = pageVideos.stream().map(Video::getId).toList();
@@ -647,8 +717,8 @@ public class VideoController {
             Map<String, Object> pagination = new HashMap<>();
             pagination.put("limit", safeLimit);
             pagination.put("hasMore", hasMore);
-            pagination.put("nextCursor", hasMore && !pageVideos.isEmpty()
-                    ? encodeCursor(pageVideos.get(pageVideos.size() - 1).getCreatedAt(), pageVideos.get(pageVideos.size() - 1).getId())
+            pagination.put("nextCursor", hasMore && !dbPageVideos.isEmpty()
+                    ? encodeCursor(dbPageVideos.get(dbPageVideos.size() - 1).getCreatedAt(), dbPageVideos.get(dbPageVideos.size() - 1).getId())
                     : null);
 
             response.put("success", true);
@@ -661,6 +731,52 @@ public class VideoController {
             response.put("message", "Error loading your videos: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
+    }
+
+    @GetMapping("/videos/{id}/download")
+    @Operation(summary = "下载视频文件到本地")
+    public ResponseEntity<StreamingResponseBody> downloadVideo(@PathVariable("id") Long videoId) throws IOException {
+        Video video = videoRepository.findById(videoId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Video not found"));
+
+        String videoUrl = video.getVideoUrl();
+        if (videoUrl == null || videoUrl.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Video file not available");
+        }
+
+        HttpHeaders headers = buildDownloadHeaders(video);
+        ResponseEntity.BodyBuilder builder = ResponseEntity.ok().headers(headers);
+
+        if (videoUrl.startsWith("/uploads/")) {
+            File file = new File(System.getProperty("user.dir"), "public" + videoUrl);
+            if (!file.exists() || !file.isFile()) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Video file not found");
+            }
+            StreamingResponseBody stream = outputStream -> {
+                try (InputStream input = Files.newInputStream(file.toPath())) {
+                    input.transferTo(outputStream);
+                }
+            };
+            return builder.contentLength(file.length()).body(stream);
+        }
+
+        if (videoUrl.startsWith("http://") || videoUrl.startsWith("https://")) {
+            HttpURLConnection connection = openRemoteConnection(videoUrl);
+            long contentLength = connection.getContentLengthLong();
+            StreamingResponseBody stream = outputStream -> {
+                try (InputStream input = connection.getInputStream()) {
+                    input.transferTo(outputStream);
+                } finally {
+                    connection.disconnect();
+                }
+            };
+            if (contentLength > 0) {
+                return builder.contentLength(contentLength).body(stream);
+            }
+            return builder.body(stream);
+        }
+
+        throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unsupported video URL");
     }
 
     // Delete My Video (owner permission checking)
@@ -790,6 +906,44 @@ public class VideoController {
         } catch (IOException e) {
             log.warn("Failed to delete file: {}", url, e);
         }
+    }
+
+    private String buildDownloadFilename(Video video) {
+        String title = video.getTitle() == null ? "video" : video.getTitle().replaceAll("[\\\\/:*?\"<>|]", "_").trim();
+        if (title.isEmpty()) {
+            title = "video";
+        }
+        if (title.length() > 60) {
+            title = title.substring(0, 60);
+        }
+        String path = video.getVideoUrl() == null ? "" : video.getVideoUrl().split("\\?")[0];
+        return title + "_" + video.getId() + getFileExtension(path, ".mp4");
+    }
+
+    private HttpHeaders buildDownloadHeaders(Video video) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+        headers.setContentDisposition(ContentDisposition.attachment()
+                .filename(buildDownloadFilename(video), StandardCharsets.UTF_8)
+                .build());
+        return headers;
+    }
+
+    private HttpURLConnection openRemoteConnection(String videoUrl) throws IOException {
+        HttpURLConnection connection = (HttpURLConnection) URI.create(videoUrl).toURL().openConnection();
+        connection.setRequestMethod("GET");
+        connection.setInstanceFollowRedirects(true);
+        connection.setConnectTimeout(30000);
+        connection.setReadTimeout(180000);
+        connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+        connection.setRequestProperty("Accept", "video/mp4,video/*,*/*");
+        connection.connect();
+        int status = connection.getResponseCode();
+        if (status < 200 || status >= 300) {
+            connection.disconnect();
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Unable to fetch remote video");
+        }
+        return connection;
     }
 
     private String getFileExtension(String originalFilename, String fallback) {

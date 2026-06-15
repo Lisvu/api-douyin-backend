@@ -36,10 +36,12 @@ public class RequestLoggerFilter implements Filter {
         HttpServletRequest httpRequest = (HttpServletRequest) request;
         String url = httpRequest.getRequestURI();
 
-        // 跳过 admin 监控接口、h2控制台、OPTIONS 预检
+        // 跳过 admin 监控接口、h2控制台、OPTIONS 预检、视频下载与静态上传（避免缓存大文件）
         if (url.contains("/h2-console")
                 || url.contains("/api/v1/admin/request-logs")
                 || url.contains("/api/v1/admin/stats")
+                || url.contains("/download")
+                || url.startsWith("/uploads/")
                 || "OPTIONS".equalsIgnoreCase(httpRequest.getMethod())) {
             chain.doFilter(request, response);
             return;

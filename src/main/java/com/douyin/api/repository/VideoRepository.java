@@ -90,6 +90,25 @@ public interface VideoRepository extends JpaRepository<Video, Long> {
         ORDER BY COALESCE(v.likesCount, 0) DESC, v.id DESC
         """)
     List<Video> searchByKeyword(@Param("q") String q, Pageable pageable);
+
+    @Query("""
+            SELECT v FROM Video v JOIN FETCH v.user
+            WHERE v.id IN (SELECT MAX(v2.id) FROM Video v2 GROUP BY v2.videoUrl)
+            ORDER BY COALESCE(v.likesCount, 0) DESC, v.id DESC
+            """)
+    List<Video> findBrowseVideos(Pageable pageable);
+
+    @Query("""
+            SELECT v FROM Video v JOIN FETCH v.user
+            WHERE v.id IN (SELECT MAX(v2.id) FROM Video v2 GROUP BY v2.videoUrl)
+              AND (COALESCE(v.likesCount, 0) < :cursorLikesCount
+                   OR (COALESCE(v.likesCount, 0) = :cursorLikesCount AND v.id < :cursorId))
+            ORDER BY COALESCE(v.likesCount, 0) DESC, v.id DESC
+            """)
+    List<Video> findBrowseVideosAfterCursor(
+            @Param("cursorLikesCount") int cursorLikesCount,
+            @Param("cursorId") Long cursorId,
+            Pageable pageable);
     @Query("SELECT COALESCE(SUM(v.likesCount), 0) FROM Video v WHERE v.user.id = :userId")
     Long sumLikesCountByUserId(@Param("userId") Long userId);
 

@@ -6,7 +6,10 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -32,13 +35,32 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.METHOD_NOT_ALLOWED, "Request method is not supported.");
     }
 
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, Object>> handleResponseStatus(ResponseStatusException ex) {
+        return error(HttpStatus.valueOf(ex.getStatusCode().value()),
+                ex.getReason() == null ? "Request failed" : ex.getReason());
+    }
+
+    @ExceptionHandler(AsyncRequestTimeoutException.class)
+    public ResponseEntity<Map<String, Object>> handleAsyncTimeout(
+            AsyncRequestTimeoutException ex,
+            HttpServletResponse response) {
+        if (response.isCommitted()) {
+            return null;
+        }
+        return error(HttpStatus.GATEWAY_TIMEOUT, "Video download timed out");
+    }
+
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<Map<String, Object>> handleUploadTooLarge() {
         return error(HttpStatus.PAYLOAD_TOO_LARGE, "Uploaded file is too large.");
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> handleUnexpected(Exception ex) {
+    public ResponseEntity<Map<String, Object>> handleUnexpected(Exception ex, HttpServletResponse response) {
+        if (response.isCommitted()) {
+            return null;
+        }
         return error(HttpStatus.INTERNAL_SERVER_ERROR, "Server error: " + ex.getMessage());
     }
 

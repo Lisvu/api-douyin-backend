@@ -27,10 +27,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.io.File;
 import java.util.*;
 
 @RestController
@@ -329,7 +329,10 @@ public class UserController {
                 ? videoRepository.findByUserIdOrderByCreatedAtDescIdDesc(ownerId, pageable)
                 : videoRepository.findByUserIdBeforeCursor(ownerId, cursorParts.createdAt(), cursorParts.id(), pageable);
         boolean hasMore = rawVideos.size() > safeLimit;
-        List<Video> pageVideos = hasMore ? rawVideos.subList(0, safeLimit) : rawVideos;
+        List<Video> dbPageVideos = hasMore ? rawVideos.subList(0, safeLimit) : rawVideos;
+        List<Video> pageVideos = dbPageVideos.stream()
+                .filter(video -> com.douyin.api.util.LocalMediaAvailability.isPlayableUrl(video.getVideoUrl()))
+                .toList();
 
         List<Long> videoIds = pageVideos.stream().map(Video::getId).toList();
         Set<Long> likedByViewer = videoIds.isEmpty() || viewerId == null
@@ -345,9 +348,9 @@ public class UserController {
         Map<String, Object> pagination = new HashMap<>();
         pagination.put("limit", safeLimit);
         pagination.put("hasMore", hasMore);
-        pagination.put("nextCursor", hasMore && !pageVideos.isEmpty()
-                ? encodeCursor(pageVideos.get(pageVideos.size() - 1).getCreatedAt(),
-                               pageVideos.get(pageVideos.size() - 1).getId())
+        pagination.put("nextCursor", hasMore && !dbPageVideos.isEmpty()
+                ? encodeCursor(dbPageVideos.get(dbPageVideos.size() - 1).getCreatedAt(),
+                               dbPageVideos.get(dbPageVideos.size() - 1).getId())
                 : null);
 
         Map<String, Object> response = new HashMap<>();
