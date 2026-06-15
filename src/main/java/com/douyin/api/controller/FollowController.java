@@ -257,7 +257,7 @@ public class FollowController {
             Long targetId = getFollowing ? rel.getFollowingId() : rel.getFollowerId();
             userRepository.findById(targetId).ifPresent(u -> {
                 boolean isMutual = userRelationRepository
-                        .findByFollowerIdAndFollowingId(targetId, currentUserId).isPresent();
+                        .findByFollowerIdAndFollowingId(currentUserId, targetId).isPresent();
                 Map<String, Object> item = new HashMap<>();
                 item.put("id", u.getId());
                 item.put("username", u.getUsername());
