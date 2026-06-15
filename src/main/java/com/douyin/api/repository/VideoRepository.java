@@ -90,4 +90,8 @@ public interface VideoRepository extends JpaRepository<Video, Long> {
         ORDER BY COALESCE(v.likesCount, 0) DESC, v.id DESC
         """)
     List<Video> searchByKeyword(@Param("q") String q, Pageable pageable);
+    @Query("SELECT COALESCE(SUM(v.likesCount), 0) FROM Video v WHERE v.user.id = :userId")
+    Long sumLikesCountByUserId(@Param("userId") Long userId);
+
+    long countByUserId(Long userId);
 }

@@ -15,6 +15,10 @@ public final class VideoResponseMapper {
     }
 
     public static Map<String, Object> toFeedItem(Video video, boolean liked) {
+        return toFeedItem(video, liked, 0);
+    }
+
+    public static Map<String, Object> toFeedItem(Video video, boolean liked, long commentCount) {
         int likeCount = video.getLikesCount() == null ? 0 : video.getLikesCount();
 
         Map<String, Object> item = new HashMap<>();
@@ -25,7 +29,7 @@ public final class VideoResponseMapper {
         item.put("video_url", video.getVideoUrl());
         item.put("cover_url", video.getCoverUrl());
         item.put("views_count", 0);
-        item.put("comments_count", 0);
+        item.put("comments_count", commentCount);
         item.put("favorites_count", 0);
         item.put("status", "published");
         item.put("created_at", video.getCreatedAt() == null ? null : video.getCreatedAt().toString());
