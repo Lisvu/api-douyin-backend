@@ -82,6 +82,14 @@ public interface VideoRepository extends JpaRepository<Video, Long> {
     @Query("SELECT v FROM Video v WHERE v.id IN :ids ORDER BY v.createdAt DESC")
     List<Video> findByIdInOrderByCreatedAtDesc(@Param("ids") Collection<Long> ids);
 
+    @EntityGraph(attributePaths = {"user"})
+    @Query("""
+        SELECT v FROM Video v
+        WHERE v.title LIKE %:q%
+           OR v.description LIKE %:q%
+        ORDER BY COALESCE(v.likesCount, 0) DESC, v.id DESC
+        """)
+    List<Video> searchByKeyword(@Param("q") String q, Pageable pageable);
     @Query("SELECT COALESCE(SUM(v.likesCount), 0) FROM Video v WHERE v.user.id = :userId")
     Long sumLikesCountByUserId(@Param("userId") Long userId);
 

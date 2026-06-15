@@ -24,27 +24,14 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 @RestController
 @RequestMapping("/api/v1/users")
@@ -146,7 +133,8 @@ public class UserController {
         pagination.put("limit", safeLimit);
         pagination.put("hasMore", hasMore);
         pagination.put("nextCursor", hasMore && !pageNotifications.isEmpty()
-                ? encodeCursor(pageNotifications.get(pageNotifications.size() - 1).getLikedAt(), pageNotifications.get(pageNotifications.size() - 1).getLikeId())
+                ? encodeCursor(pageNotifications.get(pageNotifications.size() - 1).getLikedAt(),
+                               pageNotifications.get(pageNotifications.size() - 1).getLikeId())
                 : null);
 
         Map<String, Object> response = new HashMap<>();
@@ -193,10 +181,6 @@ public class UserController {
         response.put("unreadCount", 0);
         return ResponseEntity.ok(response);
     }
-
-    // ----------------------------------------------------
-    // USER PROFILE — View any user's public profile
-    // ----------------------------------------------------
 
     @GetMapping("/{id}")
     public ResponseEntity<Map<String, Object>> getUserProfile(@PathVariable("id") Long id) {
@@ -276,10 +260,6 @@ public class UserController {
         response.put("message", "Your account has been deleted successfully, along with all related videos and interactions.");
         return ResponseEntity.ok(response);
     }
-
-    // ----------------------------------------------------
-    // LIKED VIDEOS — View my liked videos
-    // ----------------------------------------------------
 
     @GetMapping("/me/liked-videos")
     public ResponseEntity<Map<String, Object>> getLikedVideos(
@@ -377,10 +357,6 @@ public class UserController {
         return response;
     }
 
-    // ----------------------------------------------------
-    // USER SEARCH — Find users by username/displayName
-    // ----------------------------------------------------
-
     @GetMapping("/search")
     public ResponseEntity<Map<String, Object>> searchUsers(
             @RequestParam("q") String keyword,
@@ -411,10 +387,6 @@ public class UserController {
         return ResponseEntity.ok(response);
     }
 
-    // ----------------------------------------------------
-    // SHARED VIDEOS — Videos shared with me
-    // ----------------------------------------------------
-
     @GetMapping("/me/shared-videos")
     public ResponseEntity<Map<String, Object>> getSharedVideos(
             @RequestParam(value = "cursor", required = false) String cursor,
@@ -443,7 +415,6 @@ public class UserController {
             for (Video v : videoEntities) {
                 videoMap.put(v.getId(), v);
             }
-            // Build sender map for display
             List<Long> senderIds = pageShares.stream().map(Share::getFromUserId).distinct().toList();
             Map<Long, String> senderNames = new HashMap<>();
             for (Long sid : senderIds) {
@@ -473,6 +444,19 @@ public class UserController {
         response.put("success", true);
         response.put("videos", videos);
         response.put("pagination", pagination);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/me/views")
+    public ResponseEntity<Map<String, Object>> getViewHistory(HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        if (userId == null) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "User context is missing.");
+        }
+        long count = viewRepository.countByUserId(userId);
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("viewCount", count);
         return ResponseEntity.ok(response);
     }
 

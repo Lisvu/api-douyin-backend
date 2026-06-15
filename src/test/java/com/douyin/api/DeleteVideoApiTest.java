@@ -3,6 +3,7 @@ package com.douyin.api;
 import com.douyin.api.controller.VideoController;
 import com.douyin.api.model.User;
 import com.douyin.api.model.Video;
+import com.douyin.api.repository.*;
 import com.douyin.api.repository.CommentRepository;
 import com.douyin.api.repository.LikeRepository;
 import com.douyin.api.repository.ShareRepository;

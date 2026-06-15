@@ -98,7 +98,6 @@ public class VideoController {
     // RECOMMENDER SYSTEM API ENDPOINTS
     // ----------------------------------------------------
 
-    // Get Recommended Videos (Exclude viewed, order by likes count DESC)
     @GetMapping("/videos/recommendations")
     @Tag(name = "F02/F03 推荐流", description = "组员 A：推荐列表与切换数据")
     @Operation(summary = "获取推荐视频列表（F02）", description = "排除已观看视频，按 likeCount 降序，使用游标分页返回下一批。")
@@ -126,15 +125,14 @@ public class VideoController {
             List<Video> rawVideos = cursorParts == null
                     ? videoRepository.findRecommendedVideosForUser(userId, pageable)
                     : videoRepository.findRecommendedVideosForUserAfterCursor(
-                            userId,
-                            cursorParts.likesCount(),
-                            cursorParts.id(),
-                            pageable);
+                    userId,
+                    cursorParts.likesCount(),
+                    cursorParts.id(),
+                    pageable);
             boolean hasMore = rawVideos.size() > safeLimit;
             List<Video> pageVideos = hasMore ? rawVideos.subList(0, safeLimit) : rawVideos;
             long totalVideosCount = videoRepository.count();
 
-            // Batch query: get all liked video IDs in a single DB round-trip
             List<Long> videoIds = pageVideos.stream().map(Video::getId).toList();
             Set<Long> likedVideoIds = videoIds.isEmpty()
                     ? Collections.emptySet()
@@ -298,10 +296,9 @@ public class VideoController {
                 response.put("message", "Video unliked.");
                 VideoResponseMapper.putLikeFields(response, false, Math.max(0, currentLikes - 1));
             } else {
-                // Like
+                // like
                 likeRepository.save(new Like(userId, videoId));
                 videoRepository.incrementLikesCount(videoId, 1);
-
                 response.put("success", true);
                 response.put("message", "Video liked!");
                 VideoResponseMapper.putLikeFields(response, true, currentLikes + 1);
@@ -324,6 +321,73 @@ public class VideoController {
         }
     }
 
+    // ----------------------------------------------------
+    // SEARCH — 搜索视频（标题、描述、标签、评论内容）和用户
+    // ----------------------------------------------------
+
+    @GetMapping("/videos/search")
+    public ResponseEntity<Map<String, Object>> searchVideos(
+            @RequestParam("q") String keyword,
+            HttpServletRequest request) {
+
+        Map<String, Object> response = new HashMap<>();
+
+        if (keyword == null || keyword.trim().isEmpty()) {
+            response.put("success", false);
+            response.put("message", "搜索关键词不能为空");
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        String q = keyword.trim();
+        Long currentUserId = (Long) request.getAttribute("userId");
+        Pageable pageable = PageRequest.of(0, 20);
+
+        // 1. 按标题/描述（含标签）搜视频
+        List<Video> titleMatched = videoRepository.searchByKeyword(q, pageable);
+
+        // 2. 按评论内容找视频ID，再查视频
+        List<Long> commentVideoIds = commentRepository.findVideoIdsByCommentKeyword(q, pageable);
+        List<Video> commentMatched = commentVideoIds.isEmpty()
+                ? List.of()
+                : videoRepository.findByIdInOrderByCreatedAtDesc(commentVideoIds);
+
+        // 3. 合并去重，标题匹配优先
+        Map<Long, Video> videoMap = new LinkedHashMap<>();
+        for (Video v : titleMatched) videoMap.put(v.getId(), v);
+        for (Video v : commentMatched) videoMap.putIfAbsent(v.getId(), v);
+
+        // 4. 搜用户
+        List<User> users = userRepository.searchByKeyword(q, pageable);
+
+        // 5. 组装视频响应（批量查点赞状态）
+        List<Long> videoIds = new ArrayList<>(videoMap.keySet());
+        Set<Long> likedVideoIds = (currentUserId != null && !videoIds.isEmpty())
+                ? new HashSet<>(likeRepository.findLikedVideoIds(currentUserId, videoIds))
+                : Collections.emptySet();
+
+        List<Map<String, Object>> videoResults = new ArrayList<>();
+        for (Video v : videoMap.values()) {
+            boolean liked = likedVideoIds.contains(v.getId());
+            videoResults.add(VideoResponseMapper.toFeedItem(v, liked));
+        }
+
+        // 6. 组装用户响应
+        List<Map<String, Object>> userResults = new ArrayList<>();
+        for (User u : users) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("id", u.getId());
+            item.put("username", u.getUsername());
+            item.put("displayName", u.getDisplayName());
+            item.put("avatarUrl", u.getAvatarUrl());
+            userResults.add(item);
+        }
+
+        response.put("success", true);
+        response.put("keyword", q);
+        response.put("videos", videoResults);
+        response.put("users", userResults);
+        return ResponseEntity.ok(response);
+    }
     // ----------------------------------------------------
     // VIDEO COMMENTS
     // ----------------------------------------------------
@@ -505,7 +569,7 @@ public class VideoController {
                 coverFile.transferTo(targetCoverFile);
                 coverUrl = "/uploads/covers/" + savedCoverName;
             } else {
-                // Generate a random gradient color placeholder if no cover uploaded
+                // Generate a random gradient
                 int randomHue1 = (int) (Math.random() * 360);
                 int randomHue2 = (randomHue1 + 120) % 360;
                 String displayTitle = title.length() > 12 ? title.substring(0, 12) : title;
@@ -598,53 +662,6 @@ public class VideoController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
-
-    private String encodeCursor(LocalDateTime timestamp, Long id) {
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(
-                (timestamp + "|" + id).getBytes(StandardCharsets.UTF_8));
-    }
-
-    private String encodeRecommendationCursor(Video video) {
-        int likesCount = video.getLikesCount() == null ? 0 : video.getLikesCount();
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(
-                (likesCount + "|" + video.getId()).getBytes(StandardCharsets.UTF_8));
-    }
-
-    private CursorParts decodeCursor(String cursor) {
-        if (cursor == null || cursor.isBlank()) {
-            return null;
-        }
-        try {
-            String decoded = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
-            String[] parts = decoded.split("\\|", 2);
-            if (parts.length != 2) {
-                throw new IllegalArgumentException("Invalid cursor format");
-            }
-            return new CursorParts(LocalDateTime.parse(parts[0]), Long.parseLong(parts[1]));
-        } catch (RuntimeException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid cursor");
-        }
-    }
-
-    private record CursorParts(LocalDateTime createdAt, Long id) {}
-
-    private RecommendationCursorParts decodeRecommendationCursor(String cursor) {
-        if (cursor == null || cursor.isBlank()) {
-            return null;
-        }
-        try {
-            String decoded = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
-            String[] parts = decoded.split("\\|", 2);
-            if (parts.length != 2) {
-                throw new IllegalArgumentException("Invalid recommendation cursor format");
-            }
-            return new RecommendationCursorParts(Integer.parseInt(parts[0]), Long.parseLong(parts[1]));
-        } catch (RuntimeException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid cursor");
-        }
-    }
-
-    private record RecommendationCursorParts(int likesCount, Long id) {}
 
     // Delete My Video (owner permission checking)
     @DeleteMapping("/videos/{id}")
@@ -758,6 +775,10 @@ public class VideoController {
         return ResponseEntity.ok(response);
     }
 
+    // ----------------------------------------------------
+    // PRIVATE HELPERS
+    // ----------------------------------------------------
+
     private void deleteLocalFile(String url, String expectedPrefix) {
         if (url == null || !url.startsWith(expectedPrefix)) return;
         try {
@@ -797,6 +818,53 @@ public class VideoController {
         }
         return videos;
     }
+
+    private String encodeCursor(LocalDateTime timestamp, Long id) {
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(
+                (timestamp + "|" + id).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String encodeRecommendationCursor(Video video) {
+        int likesCount = video.getLikesCount() == null ? 0 : video.getLikesCount();
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(
+                (likesCount + "|" + video.getId()).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private CursorParts decodeCursor(String cursor) {
+        if (cursor == null || cursor.isBlank()) {
+            return null;
+        }
+        try {
+            String decoded = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
+            String[] parts = decoded.split("\\|", 2);
+            if (parts.length != 2) {
+                throw new IllegalArgumentException("Invalid cursor format");
+            }
+            return new CursorParts(LocalDateTime.parse(parts[0]), Long.parseLong(parts[1]));
+        } catch (RuntimeException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid cursor");
+        }
+    }
+
+    private record CursorParts(LocalDateTime createdAt, Long id) {}
+
+    private RecommendationCursorParts decodeRecommendationCursor(String cursor) {
+        if (cursor == null || cursor.isBlank()) {
+            return null;
+        }
+        try {
+            String decoded = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
+            String[] parts = decoded.split("\\|", 2);
+            if (parts.length != 2) {
+                throw new IllegalArgumentException("Invalid recommendation cursor format");
+            }
+            return new RecommendationCursorParts(Integer.parseInt(parts[0]), Long.parseLong(parts[1]));
+        } catch (RuntimeException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid cursor");
+        }
+    }
+
+    private record RecommendationCursorParts(int likesCount, Long id) {}
 
     private String recommendationsCacheKey(Long userId, String cursor, int limit) {
         return recommendationsCachePrefix(userId)

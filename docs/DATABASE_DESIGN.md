@@ -35,7 +35,7 @@ erDiagram
 *   **物理表名**：`users`
 *   **用途说明**：存储用户账号、密码及基本个人资料，用作 JWT 无状态鉴权的账户验证防线；`last_like_notification_read_at` 用于 F14「谁赞了我的视频」通知的已读水位线。
 *   **表结构设计**：
-
+* 
 | 字段名称 (Column) | 物理类型 (PostgreSQL) | 约束与属性 (Constraints) | 默认值 (Default) | 描述与业务意义 (Description) |
 | :--- | :--- | :--- | :--- | :--- |
 | `id` | `BIGINT` | PRIMARY KEY, AUTO_INCREMENT | - | 用户唯一自增 ID |
@@ -45,10 +45,10 @@ erDiagram
 | `avatar_url` | `VARCHAR(255)` | NULL | - | 用户头像 URL |
 | `bio` | `VARCHAR(255)` | NULL | - | 个人简介 |
 | `status` | `VARCHAR(20)` | NOT NULL | `'active'` | 账号状态: `active`(正常), `frozen`(冻结) |
+| `role` | `VARCHAR(20)` | NOT NULL | `'USER'` | 用户角色: `ADMIN`(管理员), `USER`(普通用户) |
 | `created_at` | `TIMESTAMP` | NOT NULL | - | 账号注册时间 |
 | `updated_at` | `TIMESTAMP` | NOT NULL | - | 账号信息更新时间 |
 | `last_like_notification_read_at` | `TIMESTAMP` | NULL | `NULL` | 上次标记点赞通知已读的时间；`NULL` 表示全部未读 |
-
 *   **索引规划 (Indexes)**：
     *   `uq_users_username` (Unique): 基于 `username` 自动生成的唯一索引，保障登录时高效率检索。
 *   **结构变更脚本**：`docs/migrations/001_add_last_like_notification_read_at.sql`

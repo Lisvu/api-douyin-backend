@@ -20,6 +20,8 @@ public interface CommentRepository extends JpaRepository<Comment, Long> {
     @Transactional
     void deleteByVideoIdIn(Collection<Long> videoIds);
 
+    @Query("SELECT DISTINCT c.videoId FROM Comment c WHERE c.content LIKE %:q%")
+    List<Long> findVideoIdsByCommentKeyword(@Param("q") String q, Pageable pageable);
     long countByVideoId(Long videoId);
 
     @Query("""
