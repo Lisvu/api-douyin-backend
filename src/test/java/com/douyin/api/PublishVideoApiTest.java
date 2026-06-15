@@ -42,6 +42,7 @@ class PublishVideoApiTest {
     @Mock private ViewRepository viewRepository;
     @Mock private ShareRepository shareRepository;
     @Mock private CommentRepository commentRepository;
+    @Mock private com.douyin.api.repository.FavoriteRepository favoriteRepository;
 
     @BeforeEach
     void setUp() {
@@ -52,6 +53,7 @@ class PublishVideoApiTest {
                 viewRepository,
                 shareRepository,
                 commentRepository,
+                favoriteRepository,
                 new NoOpRedisCacheService(),
                 TestMediaStorage.create()
         );

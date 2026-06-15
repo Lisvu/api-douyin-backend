@@ -8,6 +8,7 @@ import com.douyin.api.model.Video;
 import com.douyin.api.model.View;
 import com.douyin.api.repository.CommentItemProjection;
 import com.douyin.api.repository.CommentRepository;
+import com.douyin.api.repository.FavoriteRepository;
 import com.douyin.api.repository.LikeRepository;
 import com.douyin.api.repository.ShareRepository;
 import com.douyin.api.repository.UserRepository;
@@ -50,6 +51,7 @@ public class VideoController {
     private final ViewRepository viewRepository;
     private final ShareRepository shareRepository;
     private final CommentRepository commentRepository;
+    private final FavoriteRepository favoriteRepository;
     private final RedisCacheService redisCacheService;
     private final MediaStorageService mediaStorageService;
     private static final Duration RECOMMENDATIONS_TTL = Duration.ofSeconds(30);
@@ -81,6 +83,7 @@ public class VideoController {
                            ViewRepository viewRepository,
                            ShareRepository shareRepository,
                            CommentRepository commentRepository,
+                           FavoriteRepository favoriteRepository,
                            RedisCacheService redisCacheService,
                            MediaStorageService mediaStorageService) {
         this.userRepository = userRepository;
@@ -89,6 +92,7 @@ public class VideoController {
         this.viewRepository = viewRepository;
         this.shareRepository = shareRepository;
         this.commentRepository = commentRepository;
+        this.favoriteRepository = favoriteRepository;
         this.redisCacheService = redisCacheService;
         this.mediaStorageService = mediaStorageService;
     }
@@ -683,6 +687,66 @@ public class VideoController {
 
         response.put("success", true);
         response.put("message", "Video deleted");
+        response.put("data", new HashMap<>());
+        return ResponseEntity.ok(response);
+    }
+
+    // Batch delete own videos
+    @PostMapping("/videos/batch-delete")
+    @Transactional
+    @CacheEvict(value = "userVideos", allEntries = true)
+    public ResponseEntity<Map<String, Object>> batchDeleteVideos(
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request) {
+
+        Long userId = (Long) request.getAttribute("userId");
+        Map<String, Object> response = new LinkedHashMap<>();
+
+        @SuppressWarnings("unchecked")
+        List<Integer> rawIds = (List<Integer>) body.get("videoIds");
+        if (rawIds == null || rawIds.isEmpty()) {
+            response.put("success", false);
+            response.put("message", "videoIds is required and must be non-empty");
+            response.put("data", new HashMap<>());
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        List<Long> videoIds = rawIds.stream().map(Integer::longValue).toList();
+
+        List<Video> videos = videoRepository.findAllById(videoIds);
+        if (videos.size() != videoIds.size()) {
+            response.put("success", false);
+            response.put("message", "部分视频ID无效");
+            response.put("data", new HashMap<>());
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        for (Video video : videos) {
+            if (!video.getUser().getId().equals(userId)) {
+                response.put("success", false);
+                response.put("message", "视频 " + video.getId() + " 不属于你，无法删除");
+                response.put("data", new HashMap<>());
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+            }
+        }
+
+        likeRepository.deleteByVideoIdIn(videoIds);
+        viewRepository.deleteByVideoIdIn(videoIds);
+        favoriteRepository.deleteByVideoIdIn(videoIds);
+        commentRepository.deleteByVideoIdIn(videoIds);
+        shareRepository.deleteByVideoIdIn(videoIds);
+        videoRepository.deleteAll(videos);
+
+        redisCacheService.evictPrefix("recommendations:");
+        redisCacheService.evict("admin:stats");
+
+        for (Video video : videos) {
+            mediaStorageService.deleteMedia(video.getVideoUrl());
+            mediaStorageService.deleteMedia(video.getCoverUrl());
+        }
+
+        response.put("success", true);
+        response.put("message", "成功删除 " + videos.size() + " 个视频");
         response.put("data", new HashMap<>());
         return ResponseEntity.ok(response);
     }
