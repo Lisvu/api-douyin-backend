@@ -4,10 +4,7 @@ import com.douyin.api.controller.VideoController;
 import com.douyin.api.model.Like;
 import com.douyin.api.model.User;
 import com.douyin.api.model.Video;
-import com.douyin.api.repository.LikeRepository;
-import com.douyin.api.repository.UserRepository;
-import com.douyin.api.repository.VideoRepository;
-import com.douyin.api.repository.ViewRepository;
+import com.douyin.api.repository.*;
 import com.douyin.api.service.RedisCacheService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,6 +45,12 @@ class LikeApiTest {
     @Mock
     private ViewRepository viewRepository;
 
+    @Mock
+    private ShareRepository shareRepository;
+
+    @Mock
+    private CommentRepository commentRepository;
+
     private VideoController videoController;
 
     private User user;
@@ -55,11 +58,13 @@ class LikeApiTest {
 
     @BeforeEach
     void setUp() {
-        videoController = new VideoController(
+        VideoController videoController = new VideoController(
                 userRepository,
                 videoRepository,
                 likeRepository,
                 viewRepository,
+                shareRepository,
+                commentRepository,
                 new NoOpRedisCacheService()
         );
         mockMvc = MockMvcBuilders.standaloneSetup(videoController).build();

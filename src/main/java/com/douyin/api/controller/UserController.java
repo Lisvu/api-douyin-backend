@@ -24,24 +24,14 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 @RestController
 @RequestMapping("/api/v1/users")
@@ -385,6 +375,36 @@ public class UserController {
         response.put("success", true);
         response.put("videos", videos);
         response.put("pagination", pagination);
+        return ResponseEntity.ok(response);
+    }
+
+
+    @GetMapping("/{id}/videos")
+    public ResponseEntity<Map<String, Object>> getUserVideos(
+            @PathVariable("id") Long targetUserId,
+            @RequestParam(value = "limit", defaultValue = "10") int limit,
+            HttpServletRequest request) {
+
+        Long currentUserId = (Long) request.getAttribute("userId");
+        Map<String, Object> response = new HashMap<>();
+        int safeLimit = Math.min(Math.max(limit, 1), 50);
+        Pageable pageable = PageRequest.of(0, safeLimit);
+
+        List<Video> videos = videoRepository.findByUserIdOrderByCreatedAtDescIdDesc(targetUserId, pageable);
+
+        List<Long> videoIds = videos.stream().map(Video::getId).toList();
+        Set<Long> likedVideoIds = (currentUserId != null && !videoIds.isEmpty())
+                ? new HashSet<>(likeRepository.findLikedVideoIds(currentUserId, videoIds))
+                : Collections.emptySet();
+
+        List<Map<String, Object>> mappedVideos = new ArrayList<>();
+        for (Video v : videos) {
+            mappedVideos.add(VideoResponseMapper.toFeedItem(v, likedVideoIds.contains(v.getId())));
+        }
+
+        response.put("success", true);
+        response.put("videos", mappedVideos);
+        response.put("userId", targetUserId);
         return ResponseEntity.ok(response);
     }
 
