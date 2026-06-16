@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -19,6 +20,8 @@ jobs:
           port: ${{ secrets.SSH_PORT || 22 }}
           script: |
             set -e
+            fuser -k 8080/tcp || true
+
             sudo -u lihao bash -lc '
               set -e
               cd /home/lihao/api-douyin-backend
@@ -26,9 +29,6 @@ jobs:
               git reset --hard origin/main
               mvn -q -DskipTests compile
             '
-
-            pkill -f "spring-boot:run -q -Dspring-boot.run.profiles=server" || true
-            pkill -f "com.douyin.api.ApiDouyinApplication" || true
 
             sudo -u lihao bash -lc '
               cd /home/lihao/api-douyin-backend
