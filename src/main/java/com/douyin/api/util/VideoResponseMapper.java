@@ -37,6 +37,7 @@ public final class VideoResponseMapper {
         item.put("status", "published");
         item.put("created_at", video.getCreatedAt() == null ? null : video.getCreatedAt().toString());
         item.put("creator_name", video.getUser().getUsername());
+        item.put("avatarUrl", video.getUser().getAvatarUrl());
 
         putLikeFields(item, liked, likeCount);
         putFavoriteFields(item, favorited, favoriteCount);
