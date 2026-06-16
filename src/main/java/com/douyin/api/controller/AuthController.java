@@ -62,6 +62,7 @@ public class AuthController {
         userData.put("username", user.getUsername());
         userData.put("displayName", user.getDisplayName());
         userData.put("avatarUrl", user.getAvatarUrl());
+        userData.put("profileBackgroundUrl", user.getProfileBackgroundUrl());
         userData.put("bio", user.getBio());
         userData.put("status", user.getStatus());
         userData.put("role", user.getRole());
@@ -121,6 +122,7 @@ public class AuthController {
         userData.put("username", user.getUsername());
         userData.put("displayName", user.getDisplayName());
         userData.put("avatarUrl", user.getAvatarUrl());
+        userData.put("profileBackgroundUrl", user.getProfileBackgroundUrl());
         userData.put("bio", user.getBio());
         userData.put("status", user.getStatus());
         userData.put("role", user.getRole());
@@ -140,6 +142,7 @@ public class AuthController {
         cached.put("passwordHash", user.getPassword());
         cached.put("displayName", user.getDisplayName());
         cached.put("avatarUrl", user.getAvatarUrl());
+        cached.put("profileBackgroundUrl", user.getProfileBackgroundUrl());
         cached.put("bio", user.getBio());
         cached.put("status", user.getStatus());
         cached.put("role", user.getRole());
@@ -152,6 +155,7 @@ public class AuthController {
         userData.put("username", cached.get("username"));
         userData.put("displayName", cached.get("displayName"));
         userData.put("avatarUrl", cached.get("avatarUrl"));
+        userData.put("profileBackgroundUrl", cached.get("profileBackgroundUrl"));
         userData.put("bio", cached.get("bio"));
         userData.put("status", cached.get("status"));
         userData.put("role", cached.get("role"));

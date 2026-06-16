@@ -25,6 +25,9 @@ public class User {
     @Column(name = "avatar_url")
     private String avatarUrl;
 
+    @Column(name = "profile_background_url")
+    private String profileBackgroundUrl;
+
     @Column(length = 255)
     private String bio;
 
@@ -100,6 +103,14 @@ public class User {
 
     public void setAvatarUrl(String avatarUrl) {
         this.avatarUrl = avatarUrl;
+    }
+
+    public String getProfileBackgroundUrl() {
+        return profileBackgroundUrl;
+    }
+
+    public void setProfileBackgroundUrl(String profileBackgroundUrl) {
+        this.profileBackgroundUrl = profileBackgroundUrl;
     }
 
     public String getBio() {

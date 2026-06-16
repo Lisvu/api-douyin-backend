@@ -31,11 +31,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.io.File;
+import java.io.IOException;
 import java.util.*;
 
 @RestController
@@ -279,6 +281,55 @@ public class UserController {
         response.put("success", true);
         response.put("user", userProfileToMap(user));
         return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/me/profile-media")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> updateProfileMedia(
+            @RequestParam(value = "avatar", required = false) MultipartFile avatarFile,
+            @RequestParam(value = "background", required = false) MultipartFile backgroundFile,
+            HttpServletRequest request) {
+        User user = getCurrentUserOrThrow(request);
+        Map<String, Object> response = new HashMap<>();
+
+        if ((avatarFile == null || avatarFile.isEmpty()) && (backgroundFile == null || backgroundFile.isEmpty())) {
+            response.put("success", false);
+            response.put("message", "请至少选择一张图片。");
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        try {
+            String uniqueSuffix = user.getId() + "-" + System.currentTimeMillis();
+            if (avatarFile != null && !avatarFile.isEmpty()) {
+                validateImageFile(avatarFile);
+                String avatarExt = MediaStorageService.getFileExtension(avatarFile.getOriginalFilename(), ".jpg");
+                String avatarUrl = mediaStorageService.storeUpload(avatarFile, "avatars", "avatar-" + uniqueSuffix + avatarExt);
+                user.setAvatarUrl(avatarUrl);
+            }
+
+            if (backgroundFile != null && !backgroundFile.isEmpty()) {
+                validateImageFile(backgroundFile);
+                String backgroundExt = MediaStorageService.getFileExtension(backgroundFile.getOriginalFilename(), ".jpg");
+                String backgroundUrl = mediaStorageService.storeUpload(backgroundFile, "profile-backgrounds", "background-" + uniqueSuffix + backgroundExt);
+                user.setProfileBackgroundUrl(backgroundUrl);
+            }
+
+            User saved = userRepository.save(user);
+            redisCacheService.evict(userProfileCacheKey(user.getId()));
+            redisCacheService.evict("auth:user:" + user.getUsername());
+            response.put("success", true);
+            response.put("message", "主页资料已更新");
+            response.put("user", userProfileToMap(saved));
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+        } catch (IOException e) {
+            response.put("success", false);
+            response.put("message", "图片上传失败：" + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
     }
 
     @GetMapping("/{id}/videos")
@@ -654,6 +705,7 @@ public class UserController {
         userData.put("username", user.getUsername());
         userData.put("displayName", user.getDisplayName());
         userData.put("avatarUrl", user.getAvatarUrl());
+        userData.put("profileBackgroundUrl", user.getProfileBackgroundUrl());
         userData.put("bio", user.getBio());
         userData.put("status", user.getStatus());
         userData.put("role", user.getRole());
@@ -670,6 +722,16 @@ public class UserController {
         profile.put("followingCount", userRelationRepository.countByFollowerId(user.getId()));
         profile.put("followerCount", userRelationRepository.countByFollowingId(user.getId()));
         return profile;
+    }
+
+    private void validateImageFile(MultipartFile file) {
+        String contentType = file.getContentType();
+        if (contentType == null || !contentType.startsWith("image/")) {
+            throw new IllegalArgumentException("只能上传图片文件。");
+        }
+        if (file.getSize() > 5 * 1024 * 1024) {
+            throw new IllegalArgumentException("图片不能超过 5MB。");
+        }
     }
 
     private String userProfileCacheKey(Long userId) {
