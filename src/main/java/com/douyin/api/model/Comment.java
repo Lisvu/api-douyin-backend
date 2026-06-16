@@ -2,10 +2,13 @@ package com.douyin.api.model;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Entity
 @Table(name = "comments")
 public class Comment {
+
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Shanghai");
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -31,7 +34,7 @@ public class Comment {
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
+        createdAt = LocalDateTime.now(APP_ZONE);
         if (status == null || status.isBlank()) {
             status = "published";
         }
