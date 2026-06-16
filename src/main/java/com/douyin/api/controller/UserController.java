@@ -667,6 +667,8 @@ public class UserController {
         Long totalLikes = videoRepository.sumLikesCountByUserId(user.getId());
         profile.put("totalLikesReceived", totalLikes == null ? 0 : totalLikes);
         profile.put("publishedVideoCount", videoRepository.countByUserId(user.getId()));
+        profile.put("followingCount", userRelationRepository.countByFollowerId(user.getId()));
+        profile.put("followerCount", userRelationRepository.countByFollowingId(user.getId()));
         return profile;
     }
 
