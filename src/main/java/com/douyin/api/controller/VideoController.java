@@ -18,6 +18,7 @@ import com.douyin.api.repository.ShareRepository;
 import com.douyin.api.repository.UserRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
+import com.douyin.api.repository.UserRelationRepository;
 import com.douyin.api.repository.WatchLaterRepository;
 import com.douyin.api.service.MediaStorageService;
 import com.douyin.api.service.RedisCacheService;
@@ -69,6 +70,7 @@ public class VideoController {
     private final FavoriteRepository favoriteRepository;
     private final WatchLaterRepository watchLaterRepository;
     private final DanmakuRepository danmakuRepository;
+    private final UserRelationRepository userRelationRepository;
     private final RedisCacheService redisCacheService;
     private final MediaStorageService mediaStorageService;
     private static final Duration RECOMMENDATIONS_TTL = Duration.ofSeconds(30);
@@ -103,6 +105,7 @@ public class VideoController {
                            FavoriteRepository favoriteRepository,
                            WatchLaterRepository watchLaterRepository,
                            DanmakuRepository danmakuRepository,
+                           UserRelationRepository userRelationRepository,
                            RedisCacheService redisCacheService,
                            MediaStorageService mediaStorageService) {
         this.userRepository = userRepository;
@@ -114,6 +117,7 @@ public class VideoController {
         this.favoriteRepository = favoriteRepository;
         this.watchLaterRepository = watchLaterRepository;
         this.danmakuRepository = danmakuRepository;
+        this.userRelationRepository = userRelationRepository;
         this.redisCacheService = redisCacheService;
         this.mediaStorageService = mediaStorageService;
     }
@@ -1198,6 +1202,15 @@ public class VideoController {
             response.put("success", false);
             response.put("message", "Target user not found.");
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+        }
+
+        // Verify mutual friends
+        boolean isFollowing = userRelationRepository.findByFollowerIdAndFollowingId(fromUserId, toUserId).isPresent();
+        boolean isFollowed = userRelationRepository.findByFollowerIdAndFollowingId(toUserId, fromUserId).isPresent();
+        if (!isFollowing || !isFollowed) {
+            response.put("success", false);
+            response.put("message", "只能分享视频给互相关注的好友。");
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
         }
 
         // Check duplicate

@@ -36,4 +36,24 @@ public interface ShareRepository extends JpaRepository<Share, Long> {
     void deleteByFromUserId(Long userId);
     void deleteByToUserId(Long userId);
     void deleteByVideoIdIn(Collection<Long> videoIds);
+
+    @Query("""
+            SELECT s.id AS shareId,
+                   s.fromUserId AS fromUserId,
+                   s.toUserId AS toUserId,
+                   s.videoId AS videoId,
+                   v.title AS videoTitle,
+                   v.coverUrl AS videoCoverUrl,
+                   u.username AS creatorUsername,
+                   s.createdAt AS createdAt,
+                   v.videoUrl AS videoUrl,
+                   u.id AS creatorUserId
+            FROM Share s, Video v, User u
+            WHERE s.videoId = v.id
+              AND v.user.id = u.id
+              AND ((s.fromUserId = :user1 AND s.toUserId = :user2)
+                   OR (s.fromUserId = :user2 AND s.toUserId = :user1))
+            ORDER BY s.createdAt ASC, s.id ASC
+            """)
+    List<Object[]> findChatHistoryBetweenUsers(@Param("user1") Long user1, @Param("user2") Long user2);
 }

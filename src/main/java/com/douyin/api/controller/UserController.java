@@ -6,6 +6,7 @@ import com.douyin.api.model.Share;
 import com.douyin.api.model.User;
 import com.douyin.api.model.Video;
 import com.douyin.api.model.WatchLater;
+import com.douyin.api.repository.ChatMessageRepository;
 import com.douyin.api.repository.CommentRepository;
 import com.douyin.api.repository.DanmakuRepository;
 import com.douyin.api.repository.FavoriteRepository;
@@ -50,6 +51,7 @@ public class UserController {
     private final CommentRepository commentRepository;
     private final UserRelationRepository userRelationRepository;
     private final ShareRepository shareRepository;
+    private final ChatMessageRepository chatMessageRepository;
     private final WatchLaterRepository watchLaterRepository;
     private final DanmakuRepository danmakuRepository;
     private final RedisCacheService redisCacheService;
@@ -63,6 +65,7 @@ public class UserController {
                           CommentRepository commentRepository,
                           UserRelationRepository userRelationRepository,
                           ShareRepository shareRepository,
+                          ChatMessageRepository chatMessageRepository,
                           WatchLaterRepository watchLaterRepository,
                           DanmakuRepository danmakuRepository,
                           RedisCacheService redisCacheService,
@@ -75,6 +78,7 @@ public class UserController {
         this.commentRepository = commentRepository;
         this.userRelationRepository = userRelationRepository;
         this.shareRepository = shareRepository;
+        this.chatMessageRepository = chatMessageRepository;
         this.watchLaterRepository = watchLaterRepository;
         this.danmakuRepository = danmakuRepository;
         this.redisCacheService = redisCacheService;
@@ -117,37 +121,107 @@ public class UserController {
         Pageable pageable = PageRequest.of(0, safeLimit + 1);
 
         CursorParts cursorParts = decodeCursor(cursor);
-        List<LikeNotificationProjection> rawNotifications = cursorParts == null
+        
+        List<UnifiedNotification> allNotifications = new ArrayList<>();
+
+        // 1. Fetch Likes
+        List<LikeNotificationProjection> likes = cursorParts == null
                 ? likeRepository.findReceivedLikeNotificationsCursor(ownerId, pageable)
                 : likeRepository.findReceivedLikeNotificationsBeforeCursor(ownerId, cursorParts.createdAt(), cursorParts.id(), pageable);
-        boolean hasMore = rawNotifications.size() > safeLimit;
-        List<LikeNotificationProjection> pageNotifications = hasMore
-                ? rawNotifications.subList(0, safeLimit)
-                : rawNotifications;
+        for (LikeNotificationProjection l : likes) {
+            UnifiedNotification un = new UnifiedNotification();
+            un.uniqueKey = "L-" + l.getLikeId();
+            un.type = "like";
+            un.actionId = l.getLikeId();
+            un.username = l.getLikerUsername();
+            un.displayName = l.getLikerDisplayName();
+            un.videoId = l.getVideoId();
+            un.videoTitle = l.getVideoTitle();
+            un.createdAt = l.getLikedAt();
+            allNotifications.add(un);
+        }
+
+        // 2. Fetch Favorites
+        List<Object[]> favorites = cursorParts == null
+                ? favoriteRepository.findReceivedFavoriteNotificationsCursor(ownerId, pageable)
+                : favoriteRepository.findReceivedFavoriteNotificationsBeforeCursor(ownerId, cursorParts.createdAt(), cursorParts.id(), pageable);
+        for (Object[] f : favorites) {
+            UnifiedNotification un = new UnifiedNotification();
+            un.uniqueKey = "F-" + f[0];
+            un.type = "favorite";
+            un.actionId = (Long) f[0];
+            un.username = (String) f[2];
+            un.displayName = (String) f[3];
+            un.videoId = (Long) f[4];
+            un.videoTitle = (String) f[5];
+            un.createdAt = (LocalDateTime) f[6];
+            allNotifications.add(un);
+        }
+
+        // 3. Fetch Comments
+        List<Object[]> comments = cursorParts == null
+                ? commentRepository.findReceivedCommentNotificationsCursor(ownerId, pageable)
+                : commentRepository.findReceivedCommentNotificationsBeforeCursor(ownerId, cursorParts.createdAt(), cursorParts.id(), pageable);
+        for (Object[] c : comments) {
+            UnifiedNotification un = new UnifiedNotification();
+            un.uniqueKey = "C-" + c[0];
+            un.type = "comment";
+            un.actionId = (Long) c[0];
+            un.username = (String) c[2];
+            un.displayName = (String) c[3];
+            un.videoId = (Long) c[4];
+            un.videoTitle = (String) c[5];
+            un.content = (String) c[6];
+            un.createdAt = (LocalDateTime) c[7];
+            allNotifications.add(un);
+        }
+
+        // Sort combined list by createdAt DESC, then by actionId DESC
+        allNotifications.sort((n1, n2) -> {
+            int timeCompare = n2.createdAt.compareTo(n1.createdAt);
+            if (timeCompare != 0) {
+                return timeCompare;
+            }
+            return n2.actionId.compareTo(n1.actionId);
+        });
+
+        boolean hasMore = allNotifications.size() > safeLimit;
+        List<UnifiedNotification> pageNotifications = hasMore
+                ? allNotifications.subList(0, safeLimit)
+                : allNotifications;
 
         List<Map<String, Object>> notifications = new ArrayList<>();
-        for (LikeNotificationProjection item : pageNotifications) {
+        for (UnifiedNotification item : pageNotifications) {
             Map<String, Object> notification = new HashMap<>();
-            notification.put("likeId", item.getLikeId());
-            notification.put("likerUsername", item.getLikerUsername());
-            notification.put("likerDisplayName", item.getLikerDisplayName());
-            notification.put("videoId", item.getVideoId());
-            notification.put("videoTitle", item.getVideoTitle());
-            notification.put("likedAt", item.getLikedAt());
-            notification.put("read", isNotificationRead(item.getLikedAt(), readAfter));
+            notification.put("likeId", item.uniqueKey);
+            notification.put("type", item.type);
+            notification.put("likerUsername", item.username);
+            notification.put("likerDisplayName", item.displayName);
+            notification.put("videoId", item.videoId);
+            notification.put("videoTitle", item.videoTitle);
+            notification.put("likedAt", item.createdAt);
+            notification.put("content", item.content);
+            notification.put("read", isNotificationRead(item.createdAt, readAfter));
             notifications.add(notification);
         }
 
-        long unreadCount = readAfter == null
+        long unreadLikes = readAfter == null
                 ? likeRepository.countReceivedLikes(ownerId)
                 : likeRepository.countReceivedLikesAfter(ownerId, readAfter);
+        long unreadFavorites = readAfter == null
+                ? favoriteRepository.countReceivedFavorites(ownerId)
+                : favoriteRepository.countReceivedFavoritesAfter(ownerId, readAfter);
+        long unreadComments = readAfter == null
+                ? commentRepository.countReceivedComments(ownerId)
+                : commentRepository.countReceivedCommentsAfter(ownerId, readAfter);
+        long unreadCount = unreadLikes + unreadFavorites + unreadComments;
 
         Map<String, Object> pagination = new HashMap<>();
         pagination.put("limit", safeLimit);
         pagination.put("hasMore", hasMore);
         pagination.put("nextCursor", hasMore && !pageNotifications.isEmpty()
-                ? encodeCursor(pageNotifications.get(pageNotifications.size() - 1).getLikedAt(),
-                               pageNotifications.get(pageNotifications.size() - 1).getLikeId())
+                ? encodeCursor(pageNotifications.get(pageNotifications.size() - 1).createdAt,
+                               pageNotifications.get(pageNotifications.size() - 1).actionId)
                 : null);
 
         Map<String, Object> response = new HashMap<>();
@@ -157,6 +231,7 @@ public class UserController {
         response.put("pagination", pagination);
         return ResponseEntity.ok(response);
     }
+
 
     private String encodeCursor(LocalDateTime timestamp, Long id) {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(
@@ -272,6 +347,8 @@ public class UserController {
         watchLaterRepository.deleteByUserId(userId);
         shareRepository.deleteByFromUserId(userId);
         shareRepository.deleteByToUserId(userId);
+        chatMessageRepository.deleteByFromUserId(userId);
+        chatMessageRepository.deleteByToUserId(userId);
         userRelationRepository.deleteByFollowerIdOrFollowingId(userId, userId);
 
         for (Video video : userVideos) {
@@ -683,5 +760,17 @@ public class UserController {
             counts.put((Long) row[0], (Long) row[1]);
         }
         return counts;
+    }
+
+    private static class UnifiedNotification {
+        String uniqueKey;
+        String type;
+        Long actionId;
+        String username;
+        String displayName;
+        Long videoId;
+        String videoTitle;
+        LocalDateTime createdAt;
+        String content;
     }
 }

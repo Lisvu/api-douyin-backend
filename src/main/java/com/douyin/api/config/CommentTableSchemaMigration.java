@@ -27,6 +27,7 @@ public class CommentTableSchemaMigration implements ApplicationRunner {
             return;
         }
         ensureStatusColumn();
+        normalizeRootCommentParentIds();
     }
 
     private void createCommentsTable() {
@@ -62,6 +63,14 @@ public class CommentTableSchemaMigration implements ApplicationRunner {
             log.info("Added status column to comments table.");
         } catch (Exception ex) {
             log.warn("Could not add status column to comments table. Ensure status defaults to 'published'.", ex);
+        }
+    }
+
+    private void normalizeRootCommentParentIds() {
+        try {
+            jdbcTemplate.update("UPDATE comments SET parent_id = NULL WHERE parent_id = 0");
+        } catch (Exception ex) {
+            log.warn("Could not normalize root comment parent ids.", ex);
         }
     }
 

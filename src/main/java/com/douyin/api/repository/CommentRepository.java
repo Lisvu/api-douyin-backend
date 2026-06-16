@@ -44,7 +44,7 @@ public interface CommentRepository extends JpaRepository<Comment, Long> {
             FROM Comment c, User u
             WHERE c.userId = u.id
               AND c.videoId = :videoId
-              AND c.parentId IS NULL
+              AND (c.parentId IS NULL OR c.parentId = 0)
             ORDER BY c.createdAt DESC, c.id DESC
             """)
     List<CommentItemProjection> findTopLevelByVideoId(@Param("videoId") Long videoId, Pageable pageable);
@@ -61,7 +61,7 @@ public interface CommentRepository extends JpaRepository<Comment, Long> {
             FROM Comment c, User u
             WHERE c.userId = u.id
               AND c.videoId = :videoId
-              AND c.parentId IS NULL
+              AND (c.parentId IS NULL OR c.parentId = 0)
               AND (c.createdAt < :cursorCreatedAt OR (c.createdAt = :cursorCreatedAt AND c.id < :cursorId))
             ORDER BY c.createdAt DESC, c.id DESC
             """)
@@ -70,4 +70,66 @@ public interface CommentRepository extends JpaRepository<Comment, Long> {
             @Param("cursorCreatedAt") LocalDateTime cursorCreatedAt,
             @Param("cursorId") Long cursorId,
             Pageable pageable);
+
+    @Query("""
+            SELECT c.id AS commentId,
+                   c.userId AS commenterUserId,
+                   u.username AS commenterUsername,
+                   u.displayName AS commenterDisplayName,
+                   c.videoId AS videoId,
+                   v.title AS videoTitle,
+                   c.content AS commentContent,
+                   c.createdAt AS commentedAt
+            FROM Comment c, User u, Video v
+            WHERE c.userId = u.id
+              AND c.videoId = v.id
+              AND v.user.id = :ownerId
+              AND c.userId <> :ownerId
+            ORDER BY c.createdAt DESC, c.id DESC
+            """)
+    List<Object[]> findReceivedCommentNotificationsCursor(
+            @Param("ownerId") Long ownerId,
+            Pageable pageable);
+
+    @Query("""
+            SELECT c.id AS commentId,
+                   c.userId AS commenterUserId,
+                   u.username AS commenterUsername,
+                   u.displayName AS commenterDisplayName,
+                   c.videoId AS videoId,
+                   v.title AS videoTitle,
+                   c.content AS commentContent,
+                   c.createdAt AS commentedAt
+            FROM Comment c, User u, Video v
+            WHERE c.userId = u.id
+              AND c.videoId = v.id
+              AND v.user.id = :ownerId
+              AND c.userId <> :ownerId
+              AND (c.createdAt < :cursorCreatedAt OR (c.createdAt = :cursorCreatedAt AND c.id < :cursorId))
+            ORDER BY c.createdAt DESC, c.id DESC
+            """)
+    List<Object[]> findReceivedCommentNotificationsBeforeCursor(
+            @Param("ownerId") Long ownerId,
+            @Param("cursorCreatedAt") LocalDateTime cursorCreatedAt,
+            @Param("cursorId") Long cursorId,
+            Pageable pageable);
+
+    @Query("""
+            SELECT COUNT(c)
+            FROM Comment c, Video v
+            WHERE c.videoId = v.id
+              AND v.user.id = :ownerId
+              AND c.userId <> :ownerId
+            """)
+    long countReceivedComments(@Param("ownerId") Long ownerId);
+
+    @Query("""
+            SELECT COUNT(c)
+            FROM Comment c, Video v
+            WHERE c.videoId = v.id
+              AND v.user.id = :ownerId
+              AND c.userId <> :ownerId
+              AND c.createdAt > :readAfter
+            """)
+    long countReceivedCommentsAfter(@Param("ownerId") Long ownerId, @Param("readAfter") LocalDateTime readAfter);
 }

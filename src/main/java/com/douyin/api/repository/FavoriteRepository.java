@@ -44,4 +44,64 @@ public interface FavoriteRepository extends JpaRepository<Favorite, Long> {
                                             @Param("cursorCreatedAt") LocalDateTime cursorCreatedAt,
                                             @Param("cursorId") Long cursorId,
                                             Pageable pageable);
+
+    @Query("""
+            SELECT f.id AS favoriteId,
+                   f.userId AS favoriterUserId,
+                   u.username AS favoriterUsername,
+                   u.displayName AS favoriterDisplayName,
+                   f.videoId AS videoId,
+                   v.title AS videoTitle,
+                   f.createdAt AS favoritedAt
+            FROM Favorite f, User u, Video v
+            WHERE f.userId = u.id
+              AND f.videoId = v.id
+              AND v.user.id = :ownerId
+              AND f.userId <> :ownerId
+            ORDER BY f.createdAt DESC, f.id DESC
+            """)
+    List<Object[]> findReceivedFavoriteNotificationsCursor(
+            @Param("ownerId") Long ownerId,
+            Pageable pageable);
+
+    @Query("""
+            SELECT f.id AS favoriteId,
+                   f.userId AS favoriterUserId,
+                   u.username AS favoriterUsername,
+                   u.displayName AS favoriterDisplayName,
+                   f.videoId AS videoId,
+                   v.title AS videoTitle,
+                   f.createdAt AS favoritedAt
+            FROM Favorite f, User u, Video v
+            WHERE f.userId = u.id
+              AND f.videoId = v.id
+              AND v.user.id = :ownerId
+              AND f.userId <> :ownerId
+              AND (f.createdAt < :cursorCreatedAt OR (f.createdAt = :cursorCreatedAt AND f.id < :cursorId))
+            ORDER BY f.createdAt DESC, f.id DESC
+            """)
+    List<Object[]> findReceivedFavoriteNotificationsBeforeCursor(
+            @Param("ownerId") Long ownerId,
+            @Param("cursorCreatedAt") LocalDateTime cursorCreatedAt,
+            @Param("cursorId") Long cursorId,
+            Pageable pageable);
+
+    @Query("""
+            SELECT COUNT(f)
+            FROM Favorite f, Video v
+            WHERE f.videoId = v.id
+              AND v.user.id = :ownerId
+              AND f.userId <> :ownerId
+            """)
+    long countReceivedFavorites(@Param("ownerId") Long ownerId);
+
+    @Query("""
+            SELECT COUNT(f)
+            FROM Favorite f, Video v
+            WHERE f.videoId = v.id
+              AND v.user.id = :ownerId
+              AND f.userId <> :ownerId
+              AND f.createdAt > :readAfter
+            """)
+    long countReceivedFavoritesAfter(@Param("ownerId") Long ownerId, @Param("readAfter") LocalDateTime readAfter);
 }

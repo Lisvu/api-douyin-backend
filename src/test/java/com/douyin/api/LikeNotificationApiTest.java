@@ -3,6 +3,8 @@ package com.douyin.api;
 import com.douyin.api.controller.UserController;
 import com.douyin.api.model.User;
 import com.douyin.api.repository.CommentRepository;
+import com.douyin.api.repository.ChatMessageRepository;
+import com.douyin.api.repository.DanmakuRepository;
 import com.douyin.api.repository.FavoriteRepository;
 import com.douyin.api.repository.LikeNotificationProjection;
 import com.douyin.api.repository.LikeRepository;
@@ -10,6 +12,9 @@ import com.douyin.api.repository.UserRelationRepository;
 import com.douyin.api.repository.UserRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
+import com.douyin.api.repository.WatchLaterRepository;
+import com.douyin.api.service.MediaStorageService;
+import com.douyin.api.service.RedisCacheService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -60,6 +65,21 @@ class LikeNotificationApiTest {
 
     @Mock
     private UserRelationRepository userRelationRepository;
+
+    @Mock
+    private ChatMessageRepository chatMessageRepository;
+
+    @Mock
+    private WatchLaterRepository watchLaterRepository;
+
+    @Mock
+    private DanmakuRepository danmakuRepository;
+
+    @Mock
+    private RedisCacheService redisCacheService;
+
+    @Mock
+    private MediaStorageService mediaStorageService;
 
     @InjectMocks
     private UserController userController;

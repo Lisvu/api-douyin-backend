@@ -56,6 +56,7 @@ class PublishVideoApiTest {
                 favoriteRepository,
                 null,
                 null,
+                null,  // UserRelationRepository
                 new NoOpRedisCacheService(),
                 TestMediaStorage.create()
         );
