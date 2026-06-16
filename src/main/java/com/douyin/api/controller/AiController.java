@@ -151,17 +151,44 @@ public class AiController {
     }
 
     private String extractOutputText(String responseBody) throws Exception {
-        if (responseBody != null && responseBody.trim().startsWith("event:")) {
+        if (responseBody != null && looksLikeSse(responseBody)) {
             String sseText = extractOutputTextFromSse(responseBody);
             if (!sseText.isBlank()) {
                 return sseText;
             }
+            return "";
         }
 
-        JsonNode root = objectMapper.readTree(responseBody);
+        return extractOutputText(objectMapper.readTree(responseBody), responseBody);
+    }
+
+    private String extractOutputText(JsonNode root, String fallback) throws Exception {
         JsonNode outputText = root.path("output_text");
         if (outputText.isTextual()) {
             return outputText.asText();
+        }
+
+        JsonNode delta = root.path("delta");
+        if (delta.isTextual()) {
+            return delta.asText();
+        }
+
+        JsonNode text = root.path("text");
+        if (text.isTextual()) {
+            return text.asText();
+        }
+
+        JsonNode contentText = root.path("content");
+        if (contentText.isTextual()) {
+            return contentText.asText();
+        }
+
+        JsonNode response = root.path("response");
+        if (response.isObject()) {
+            String responseText = extractOutputText(response, "");
+            if (!responseText.isBlank()) {
+                return responseText;
+            }
         }
 
         JsonNode output = root.path("output");
@@ -183,7 +210,17 @@ public class AiController {
         if (choicesText.isTextual()) {
             return choicesText.asText();
         }
-        return responseBody;
+        return fallback;
+    }
+
+    private boolean looksLikeSse(String responseBody) {
+        for (String line : responseBody.split("\\R")) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("event:") || trimmed.startsWith("data:")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String extractOutputTextFromSse(String responseBody) throws Exception {
@@ -201,21 +238,17 @@ public class AiController {
 
             JsonNode node = objectMapper.readTree(data);
             String type = node.path("type").asText("");
-            JsonNode delta = node.path("delta");
-            if (delta.isTextual()) {
-                deltas.append(delta.asText());
+            String eventText = extractOutputText(node, "");
+            if (eventText.isBlank()) {
+                continue;
             }
 
-            JsonNode text = node.path("text");
-            if (text.isTextual()) {
-                completedTexts.add(text.asText());
-            }
-
-            if ("response.completed".equals(type)) {
-                String output = extractOutputText(data);
-                if (!output.isBlank() && !output.equals(data)) {
-                    completedTexts.add(output);
-                }
+            if (type.endsWith(".delta")) {
+                deltas.append(eventText);
+            } else if ("response.completed".equals(type) || type.endsWith(".done") || type.endsWith(".completed")) {
+                completedTexts.add(eventText);
+            } else if (deltas.isEmpty()) {
+                completedTexts.add(eventText);
             }
         }
 
