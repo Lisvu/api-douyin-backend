@@ -1,20 +1,24 @@
 package com.douyin.api.controller;
 
 import com.douyin.api.model.Comment;
+import com.douyin.api.model.Danmaku;
 import com.douyin.api.model.Favorite;
 import com.douyin.api.model.Like;
 import com.douyin.api.model.Share;
 import com.douyin.api.model.User;
 import com.douyin.api.model.Video;
 import com.douyin.api.model.View;
+import com.douyin.api.model.WatchLater;
 import com.douyin.api.repository.CommentItemProjection;
 import com.douyin.api.repository.CommentRepository;
+import com.douyin.api.repository.DanmakuRepository;
 import com.douyin.api.repository.FavoriteRepository;
 import com.douyin.api.repository.LikeRepository;
 import com.douyin.api.repository.ShareRepository;
 import com.douyin.api.repository.UserRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
+import com.douyin.api.repository.WatchLaterRepository;
 import com.douyin.api.service.MediaStorageService;
 import com.douyin.api.service.RedisCacheService;
 import com.douyin.api.util.LocalMediaAvailability;
@@ -63,6 +67,8 @@ public class VideoController {
     private final ShareRepository shareRepository;
     private final CommentRepository commentRepository;
     private final FavoriteRepository favoriteRepository;
+    private final WatchLaterRepository watchLaterRepository;
+    private final DanmakuRepository danmakuRepository;
     private final RedisCacheService redisCacheService;
     private final MediaStorageService mediaStorageService;
     private static final Duration RECOMMENDATIONS_TTL = Duration.ofSeconds(30);
@@ -95,6 +101,8 @@ public class VideoController {
                            ShareRepository shareRepository,
                            CommentRepository commentRepository,
                            FavoriteRepository favoriteRepository,
+                           WatchLaterRepository watchLaterRepository,
+                           DanmakuRepository danmakuRepository,
                            RedisCacheService redisCacheService,
                            MediaStorageService mediaStorageService) {
         this.userRepository = userRepository;
@@ -104,6 +112,8 @@ public class VideoController {
         this.shareRepository = shareRepository;
         this.commentRepository = commentRepository;
         this.favoriteRepository = favoriteRepository;
+        this.watchLaterRepository = watchLaterRepository;
+        this.danmakuRepository = danmakuRepository;
         this.redisCacheService = redisCacheService;
         this.mediaStorageService = mediaStorageService;
     }
@@ -655,6 +665,191 @@ public class VideoController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    @GetMapping("/videos/{id}/danmaku")
+    public ResponseEntity<Map<String, Object>> getVideoDanmaku(@PathVariable("id") Long videoId) {
+        Map<String, Object> response = new HashMap<>();
+        if (!videoRepository.existsById(videoId)) {
+            response.put("success", false);
+            response.put("message", "Video not found.");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+        }
+
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (Danmaku danmaku : danmakuRepository.findByVideoIdOrderByAppearAtAscIdAsc(videoId)) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("id", danmaku.getId());
+            item.put("videoId", danmaku.getVideoId());
+            item.put("userId", danmaku.getUserId());
+            item.put("content", danmaku.getContent());
+            item.put("appearAt", danmaku.getAppearAt());
+            item.put("color", danmaku.getColor());
+            item.put("createdAt", danmaku.getCreatedAt());
+            items.add(item);
+        }
+
+        response.put("success", true);
+        response.put("danmaku", items);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/videos/{id}/danmaku")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> createVideoDanmaku(
+            @PathVariable("id") Long videoId,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        Map<String, Object> response = new HashMap<>();
+
+        if (userId == null) {
+            response.put("success", false);
+            response.put("message", "Not authenticated.");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+        }
+        if (!videoRepository.existsById(videoId)) {
+            response.put("success", false);
+            response.put("message", "Video not found.");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+        }
+
+        Object contentObj = body == null ? null : body.get("content");
+        String content = contentObj == null ? "" : contentObj.toString().trim();
+        if (content.isEmpty()) {
+            response.put("success", false);
+            response.put("message", "Danmaku content is required.");
+            return ResponseEntity.badRequest().body(response);
+        }
+        if (content.length() > 100) {
+            response.put("success", false);
+            response.put("message", "Danmaku content must be at most 100 characters.");
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        double appearAt = 0;
+        Object appearAtObj = body == null ? null : body.get("appearAt");
+        if (appearAtObj instanceof Number number) {
+            appearAt = Math.max(0, number.doubleValue());
+        } else if (appearAtObj != null) {
+            try {
+                appearAt = Math.max(0, Double.parseDouble(appearAtObj.toString()));
+            } catch (NumberFormatException ignored) {
+                appearAt = 0;
+            }
+        }
+
+        String color = null;
+        Object colorObj = body == null ? null : body.get("color");
+        if (colorObj != null) {
+            color = colorObj.toString().trim();
+            if (color.length() > 16) {
+                color = color.substring(0, 16);
+            }
+        }
+
+        Danmaku danmaku = new Danmaku();
+        danmaku.setVideoId(videoId);
+        danmaku.setUserId(userId);
+        danmaku.setContent(content);
+        danmaku.setAppearAt(appearAt);
+        danmaku.setColor(color);
+        danmakuRepository.save(danmaku);
+
+        User author = userRepository.findById(userId).orElse(null);
+        Map<String, Object> danmakuData = new HashMap<>();
+        danmakuData.put("id", danmaku.getId());
+        danmakuData.put("videoId", danmaku.getVideoId());
+        danmakuData.put("userId", danmaku.getUserId());
+        danmakuData.put("username", author != null ? author.getUsername() : "");
+        danmakuData.put("content", danmaku.getContent());
+        danmakuData.put("appearAt", danmaku.getAppearAt());
+        danmakuData.put("color", danmaku.getColor());
+        danmakuData.put("createdAt", danmaku.getCreatedAt());
+
+        response.put("success", true);
+        response.put("message", "Danmaku posted.");
+        response.put("danmaku", danmakuData);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PostMapping("/videos/{id}/watch-later")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> addWatchLater(
+            @PathVariable("id") Long videoId,
+            HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        Map<String, Object> response = new HashMap<>();
+
+        if (userId == null) {
+            response.put("success", false);
+            response.put("message", "Not authenticated.");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+        }
+        if (!videoRepository.existsById(videoId)) {
+            response.put("success", false);
+            response.put("message", "Video not found.");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+        }
+        if (watchLaterRepository.existsByUserIdAndVideoId(userId, videoId)) {
+            response.put("success", true);
+            response.put("message", "Already in watch later.");
+            response.put("inWatchLater", true);
+            response.put("watchLaterCount", watchLaterRepository.countByUserId(userId));
+            return ResponseEntity.ok(response);
+        }
+
+        WatchLater watchLater = new WatchLater();
+        watchLater.setUserId(userId);
+        watchLater.setVideoId(videoId);
+        watchLaterRepository.save(watchLater);
+
+        response.put("success", true);
+        response.put("message", "Added to watch later.");
+        response.put("inWatchLater", true);
+        response.put("watchLaterCount", watchLaterRepository.countByUserId(userId));
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @DeleteMapping("/videos/{id}/watch-later")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> removeWatchLater(
+            @PathVariable("id") Long videoId,
+            HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        Map<String, Object> response = new HashMap<>();
+
+        if (userId == null) {
+            response.put("success", false);
+            response.put("message", "Not authenticated.");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+        }
+
+        watchLaterRepository.deleteByUserIdAndVideoId(userId, videoId);
+        response.put("success", true);
+        response.put("message", "Removed from watch later.");
+        response.put("inWatchLater", false);
+        response.put("watchLaterCount", watchLaterRepository.countByUserId(userId));
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/videos/{id}/watch-later")
+    public ResponseEntity<Map<String, Object>> getWatchLaterStatus(
+            @PathVariable("id") Long videoId,
+            HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        Map<String, Object> response = new HashMap<>();
+
+        if (userId == null) {
+            response.put("success", false);
+            response.put("message", "Not authenticated.");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+        }
+
+        response.put("success", true);
+        response.put("inWatchLater", watchLaterRepository.existsByUserIdAndVideoId(userId, videoId));
+        response.put("watchLaterCount", watchLaterRepository.countByUserId(userId));
+        return ResponseEntity.ok(response);
+    }
+
     // ----------------------------------------------------
     // MY VIDEOS MANAGEMENT API ENDPOINTS
     // ----------------------------------------------------
@@ -878,6 +1073,8 @@ public class VideoController {
         likeRepository.deleteByVideoId(videoId);
         viewRepository.deleteByVideoId(videoId);
         commentRepository.deleteByVideoIdIn(List.of(videoId));
+        danmakuRepository.deleteByVideoIdIn(List.of(videoId));
+        watchLaterRepository.deleteByVideoIdIn(List.of(videoId));
         videoRepository.delete(video);
         redisCacheService.evictPrefix("recommendations:");
         redisCacheService.evict("admin:stats");
@@ -935,6 +1132,8 @@ public class VideoController {
         viewRepository.deleteByVideoIdIn(videoIds);
         favoriteRepository.deleteByVideoIdIn(videoIds);
         commentRepository.deleteByVideoIdIn(videoIds);
+        danmakuRepository.deleteByVideoIdIn(videoIds);
+        watchLaterRepository.deleteByVideoIdIn(videoIds);
         shareRepository.deleteByVideoIdIn(videoIds);
         videoRepository.deleteAll(videos);
 

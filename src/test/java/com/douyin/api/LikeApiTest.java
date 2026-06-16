@@ -72,6 +72,8 @@ class LikeApiTest {
                 shareRepository,
                 commentRepository,
                 null,  // FavoriteRepository — not used in like test
+                null,
+                null,
                 new NoOpRedisCacheService(),
                 TestMediaStorage.create()
         );

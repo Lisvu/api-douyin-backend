@@ -5,7 +5,9 @@ import com.douyin.api.model.Like;
 import com.douyin.api.model.Share;
 import com.douyin.api.model.User;
 import com.douyin.api.model.Video;
+import com.douyin.api.model.WatchLater;
 import com.douyin.api.repository.CommentRepository;
+import com.douyin.api.repository.DanmakuRepository;
 import com.douyin.api.repository.FavoriteRepository;
 import com.douyin.api.repository.LikeNotificationProjection;
 import com.douyin.api.repository.LikeRepository;
@@ -14,6 +16,7 @@ import com.douyin.api.repository.UserRepository;
 import com.douyin.api.repository.UserRelationRepository;
 import com.douyin.api.repository.VideoRepository;
 import com.douyin.api.repository.ViewRepository;
+import com.douyin.api.repository.WatchLaterRepository;
 import com.douyin.api.service.MediaStorageService;
 import com.douyin.api.service.RedisCacheService;
 import com.douyin.api.util.VideoResponseMapper;
@@ -47,6 +50,8 @@ public class UserController {
     private final CommentRepository commentRepository;
     private final UserRelationRepository userRelationRepository;
     private final ShareRepository shareRepository;
+    private final WatchLaterRepository watchLaterRepository;
+    private final DanmakuRepository danmakuRepository;
     private final RedisCacheService redisCacheService;
     private final MediaStorageService mediaStorageService;
 
@@ -58,6 +63,8 @@ public class UserController {
                           CommentRepository commentRepository,
                           UserRelationRepository userRelationRepository,
                           ShareRepository shareRepository,
+                          WatchLaterRepository watchLaterRepository,
+                          DanmakuRepository danmakuRepository,
                           RedisCacheService redisCacheService,
                           MediaStorageService mediaStorageService) {
         this.userRepository = userRepository;
@@ -68,6 +75,8 @@ public class UserController {
         this.commentRepository = commentRepository;
         this.userRelationRepository = userRelationRepository;
         this.shareRepository = shareRepository;
+        this.watchLaterRepository = watchLaterRepository;
+        this.danmakuRepository = danmakuRepository;
         this.redisCacheService = redisCacheService;
         this.mediaStorageService = mediaStorageService;
     }
@@ -251,12 +260,16 @@ public class UserController {
             viewRepository.deleteByVideoIdIn(userVideoIds);
             favoriteRepository.deleteByVideoIdIn(userVideoIds);
             commentRepository.deleteByVideoIdIn(userVideoIds);
+            danmakuRepository.deleteByVideoIdIn(userVideoIds);
+            watchLaterRepository.deleteByVideoIdIn(userVideoIds);
             shareRepository.deleteByVideoIdIn(userVideoIds);
         }
         likeRepository.deleteByUserId(userId);
         viewRepository.deleteByUserId(userId);
         favoriteRepository.deleteByUserId(userId);
         commentRepository.deleteByUserId(userId);
+        danmakuRepository.deleteByUserId(userId);
+        watchLaterRepository.deleteByUserId(userId);
         shareRepository.deleteByFromUserId(userId);
         shareRepository.deleteByToUserId(userId);
         userRelationRepository.deleteByFollowerIdOrFollowingId(userId, userId);
@@ -476,6 +489,63 @@ public class UserController {
         response.put("success", true);
         response.put("videos", videos);
         response.put("pagination", pagination);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/me/watch-later")
+    public ResponseEntity<Map<String, Object>> getWatchLaterVideos(
+            @RequestParam(value = "cursor", required = false) String cursor,
+            @RequestParam(value = "limit", defaultValue = "8") int limit,
+            HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        if (userId == null) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "User context is missing.");
+        }
+
+        int safeLimit = Math.min(Math.max(limit, 1), 50);
+        Pageable pageable = PageRequest.of(0, safeLimit + 1);
+
+        CursorParts cursorParts = decodeCursor(cursor);
+        List<WatchLater> rawItems = cursorParts == null
+                ? watchLaterRepository.findByUserIdOrderByCreatedAtDescIdDesc(userId, pageable)
+                : watchLaterRepository.findByUserIdBeforeCursor(
+                        userId, cursorParts.createdAt(), cursorParts.id(), pageable);
+        boolean hasMore = rawItems.size() > safeLimit;
+        List<WatchLater> pageItems = hasMore ? rawItems.subList(0, safeLimit) : rawItems;
+
+        List<Map<String, Object>> videos = new ArrayList<>();
+        if (!pageItems.isEmpty()) {
+            List<Long> videoIds = pageItems.stream().map(WatchLater::getVideoId).toList();
+            List<Video> videoEntities = videoRepository.findByIdInOrderByCreatedAtDesc(videoIds);
+            Map<Long, Video> videoMap = new HashMap<>();
+            for (Video video : videoEntities) {
+                videoMap.put(video.getId(), video);
+            }
+            Set<Long> likedVideoIds = likeRepository.findLikedVideoIds(userId, videoIds);
+
+            for (WatchLater item : pageItems) {
+                Video video = videoMap.get(item.getVideoId());
+                if (video != null && com.douyin.api.util.LocalMediaAvailability.isPlayableUrl(video.getVideoUrl())) {
+                    Map<String, Object> feedItem = VideoResponseMapper.toFeedItem(video, likedVideoIds.contains(video.getId()));
+                    feedItem.put("watch_later_at", item.getCreatedAt().toString());
+                    videos.add(feedItem);
+                }
+            }
+        }
+
+        Map<String, Object> pagination = new HashMap<>();
+        pagination.put("limit", safeLimit);
+        pagination.put("hasMore", hasMore);
+        pagination.put("nextCursor", hasMore && !pageItems.isEmpty()
+                ? encodeCursor(pageItems.get(pageItems.size() - 1).getCreatedAt(),
+                               pageItems.get(pageItems.size() - 1).getId())
+                : null);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("videos", videos);
+        response.put("pagination", pagination);
+        response.put("totalCount", watchLaterRepository.countByUserId(userId));
         return ResponseEntity.ok(response);
     }
 

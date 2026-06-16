@@ -58,6 +58,8 @@ class DeleteVideoApiTest {
                 shareRepository,
                 commentRepository,
                 null,  // FavoriteRepository — not used in delete test
+                null,
+                null,
                 new NoOpRedisCacheService(),
                 TestMediaStorage.create()
         );

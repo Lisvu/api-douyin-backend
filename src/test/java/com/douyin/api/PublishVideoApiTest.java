@@ -54,6 +54,8 @@ class PublishVideoApiTest {
                 shareRepository,
                 commentRepository,
                 favoriteRepository,
+                null,
+                null,
                 new NoOpRedisCacheService(),
                 TestMediaStorage.create()
         );
