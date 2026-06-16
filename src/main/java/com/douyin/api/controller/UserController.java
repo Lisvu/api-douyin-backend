@@ -137,6 +137,7 @@ public class UserController {
             un.actionId = l.getLikeId();
             un.username = l.getLikerUsername();
             un.displayName = l.getLikerDisplayName();
+            un.avatarUrl = l.getLikerAvatarUrl();
             un.videoId = l.getVideoId();
             un.videoTitle = l.getVideoTitle();
             un.createdAt = l.getLikedAt();
@@ -154,9 +155,10 @@ public class UserController {
             un.actionId = (Long) f[0];
             un.username = (String) f[2];
             un.displayName = (String) f[3];
-            un.videoId = (Long) f[4];
-            un.videoTitle = (String) f[5];
-            un.createdAt = (LocalDateTime) f[6];
+            un.avatarUrl = (String) f[4];
+            un.videoId = (Long) f[5];
+            un.videoTitle = (String) f[6];
+            un.createdAt = (LocalDateTime) f[7];
             allNotifications.add(un);
         }
 
@@ -171,10 +173,11 @@ public class UserController {
             un.actionId = (Long) c[0];
             un.username = (String) c[2];
             un.displayName = (String) c[3];
-            un.videoId = (Long) c[4];
-            un.videoTitle = (String) c[5];
-            un.content = (String) c[6];
-            un.createdAt = (LocalDateTime) c[7];
+            un.avatarUrl = (String) c[4];
+            un.videoId = (Long) c[5];
+            un.videoTitle = (String) c[6];
+            un.content = (String) c[7];
+            un.createdAt = (LocalDateTime) c[8];
             allNotifications.add(un);
         }
 
@@ -199,6 +202,7 @@ public class UserController {
             notification.put("type", item.type);
             notification.put("likerUsername", item.username);
             notification.put("likerDisplayName", item.displayName);
+            notification.put("likerAvatarUrl", item.avatarUrl);
             notification.put("videoId", item.videoId);
             notification.put("videoTitle", item.videoTitle);
             notification.put("likedAt", item.createdAt);
@@ -832,6 +836,7 @@ public class UserController {
         Long actionId;
         String username;
         String displayName;
+        String avatarUrl;
         Long videoId;
         String videoTitle;
         LocalDateTime createdAt;

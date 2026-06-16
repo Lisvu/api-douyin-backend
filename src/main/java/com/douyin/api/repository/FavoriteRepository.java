@@ -50,6 +50,7 @@ public interface FavoriteRepository extends JpaRepository<Favorite, Long> {
                    f.userId AS favoriterUserId,
                    u.username AS favoriterUsername,
                    u.displayName AS favoriterDisplayName,
+                   u.avatarUrl AS favoriterAvatarUrl,
                    f.videoId AS videoId,
                    v.title AS videoTitle,
                    f.createdAt AS favoritedAt
@@ -69,6 +70,7 @@ public interface FavoriteRepository extends JpaRepository<Favorite, Long> {
                    f.userId AS favoriterUserId,
                    u.username AS favoriterUsername,
                    u.displayName AS favoriterDisplayName,
+                   u.avatarUrl AS favoriterAvatarUrl,
                    f.videoId AS videoId,
                    v.title AS videoTitle,
                    f.createdAt AS favoritedAt

@@ -43,6 +43,7 @@ public interface LikeRepository extends JpaRepository<Like, Long> {
                    l.userId AS likerUserId,
                    u.username AS likerUsername,
                    u.displayName AS likerDisplayName,
+                   u.avatarUrl AS likerAvatarUrl,
                    l.videoId AS videoId,
                    v.title AS videoTitle,
                    l.createdAt AS likedAt
@@ -62,6 +63,7 @@ public interface LikeRepository extends JpaRepository<Like, Long> {
                    l.userId AS likerUserId,
                    u.username AS likerUsername,
                    u.displayName AS likerDisplayName,
+                   u.avatarUrl AS likerAvatarUrl,
                    l.videoId AS videoId,
                    v.title AS videoTitle,
                    l.createdAt AS likedAt

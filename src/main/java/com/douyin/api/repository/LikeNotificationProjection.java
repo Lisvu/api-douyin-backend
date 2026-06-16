@@ -7,6 +7,7 @@ public interface LikeNotificationProjection {
     Long getLikerUserId();
     String getLikerUsername();
     String getLikerDisplayName();
+    String getLikerAvatarUrl();
     Long getVideoId();
     String getVideoTitle();
     LocalDateTime getLikedAt();
