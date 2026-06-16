@@ -197,9 +197,9 @@ public class AiController {
                 JsonNode content = item.path("content");
                 if (content.isArray()) {
                     for (JsonNode part : content) {
-                        JsonNode text = part.path("text");
-                        if (text.isTextual()) {
-                            return text.asText();
+                        JsonNode partText = part.path("text");
+                        if (partText.isTextual()) {
+                            return partText.asText();
                         }
                     }
                 }
