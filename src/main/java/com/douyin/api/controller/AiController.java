@@ -23,6 +23,7 @@ import java.net.http.HttpResponse;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
@@ -150,6 +151,13 @@ public class AiController {
     }
 
     private String extractOutputText(String responseBody) throws Exception {
+        if (responseBody != null && responseBody.trim().startsWith("event:")) {
+            String sseText = extractOutputTextFromSse(responseBody);
+            if (!sseText.isBlank()) {
+                return sseText;
+            }
+        }
+
         JsonNode root = objectMapper.readTree(responseBody);
         JsonNode outputText = root.path("output_text");
         if (outputText.isTextual()) {
@@ -176,6 +184,45 @@ public class AiController {
             return choicesText.asText();
         }
         return responseBody;
+    }
+
+    private String extractOutputTextFromSse(String responseBody) throws Exception {
+        StringBuilder deltas = new StringBuilder();
+        List<String> completedTexts = new ArrayList<>();
+        for (String line : responseBody.split("\\R")) {
+            String trimmed = line.trim();
+            if (!trimmed.startsWith("data:")) {
+                continue;
+            }
+            String data = trimmed.substring("data:".length()).trim();
+            if (data.isBlank() || "[DONE]".equals(data)) {
+                continue;
+            }
+
+            JsonNode node = objectMapper.readTree(data);
+            String type = node.path("type").asText("");
+            JsonNode delta = node.path("delta");
+            if (delta.isTextual()) {
+                deltas.append(delta.asText());
+            }
+
+            JsonNode text = node.path("text");
+            if (text.isTextual()) {
+                completedTexts.add(text.asText());
+            }
+
+            if ("response.completed".equals(type)) {
+                String output = extractOutputText(data);
+                if (!output.isBlank() && !output.equals(data)) {
+                    completedTexts.add(output);
+                }
+            }
+        }
+
+        if (!completedTexts.isEmpty()) {
+            return completedTexts.get(completedTexts.size() - 1);
+        }
+        return deltas.toString();
     }
 
     private Map<String, Object> parseCopy(String rawText) throws Exception {
