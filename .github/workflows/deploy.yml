@@ -20,8 +20,6 @@ jobs:
           port: ${{ secrets.SSH_PORT || 22 }}
           script: |
             set -e
-            fuser -k 8080/tcp || true
-
             sudo -u lihao bash -lc '
               set -e
               cd /home/lihao/api-douyin-backend
@@ -30,7 +28,36 @@ jobs:
               mvn -q -DskipTests compile
             '
 
+            old_pids=$(pgrep -u lihao -f "com.douyin.api.ApiDouyinApplication" || true)
+            if [ -n "$old_pids" ]; then
+              kill $old_pids || true
+            fi
+
+            for i in $(seq 1 20); do
+              if ss -ltn | grep -q ':8080 '; then
+                sleep 1
+              else
+                break
+              fi
+            done
+
+            if ss -ltn | grep -q ':8080 '; then
+              fuser -k 8080/tcp || true
+              sleep 2
+            fi
+
             sudo -u lihao bash -lc '
               cd /home/lihao/api-douyin-backend
               nohup mvn spring-boot:run -q -Dspring-boot.run.profiles=server > /home/lihao/backend.log 2>&1 < /dev/null &
             '
+
+            for i in $(seq 1 30); do
+              if ss -ltn | grep -q ':8080 '; then
+                exit 0
+              fi
+              sleep 1
+            done
+
+            echo "Backend did not start on port 8080" >&2
+            tail -n 80 /home/lihao/backend.log >&2
+            exit 1
