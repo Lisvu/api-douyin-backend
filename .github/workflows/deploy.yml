@@ -46,10 +46,7 @@ jobs:
               sleep 2
             fi
 
-            sudo -u lihao bash -lc '
-              cd /home/lihao/api-douyin-backend
-              nohup mvn spring-boot:run -q -Dspring-boot.run.profiles=server > /home/lihao/backend.log 2>&1 < /dev/null &
-            '
+            /usr/local/sbin/api-douyin-start-backend
 
             for i in $(seq 1 30); do
               if ss -ltn | grep -q ':8080 '; then
