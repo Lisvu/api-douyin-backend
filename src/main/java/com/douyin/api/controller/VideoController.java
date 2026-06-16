@@ -1,6 +1,7 @@
 package com.douyin.api.controller;
 
 import com.douyin.api.model.Comment;
+import com.douyin.api.model.Favorite;
 import com.douyin.api.model.Like;
 import com.douyin.api.model.Share;
 import com.douyin.api.model.User;
@@ -141,12 +142,18 @@ public class VideoController {
             Set<Long> likedVideoIds = videoIds.isEmpty()
                     ? Collections.emptySet()
                     : new HashSet<>(likeRepository.findLikedVideoIds(userId, videoIds));
+            Set<Long> favoritedVideoIds = (userId != null && !videoIds.isEmpty())
+                    ? new HashSet<>(favoriteRepository.findFavoritedVideoIds(userId, videoIds))
+                    : Collections.emptySet();
             Map<Long, Long> commentCounts = loadCommentCounts(videoIds);
+            Map<Long, Long> favoriteCounts = loadFavoriteCounts(videoIds);
 
             List<Map<String, Object>> mappedVideos = new ArrayList<>();
             for (Video v : pageVideos) {
                 boolean liked = likedVideoIds.contains(v.getId());
-                mappedVideos.add(VideoResponseMapper.toFeedItem(v, liked, commentCounts.getOrDefault(v.getId(), 0L)));
+                boolean favorited = favoritedVideoIds.contains(v.getId());
+                mappedVideos.add(VideoResponseMapper.toFeedItem(
+                        v, liked, favorited, favoriteCounts.getOrDefault(v.getId(), 0L), commentCounts.getOrDefault(v.getId(), 0L)));
             }
 
             Map<String, Object> pagination = new HashMap<>();
@@ -209,12 +216,18 @@ public class VideoController {
             Set<Long> likedVideoIds = videoIds.isEmpty()
                     ? Collections.emptySet()
                     : new HashSet<>(likeRepository.findLikedVideoIds(userId, videoIds));
+            Set<Long> favoritedVideoIds = (userId != null && !videoIds.isEmpty())
+                    ? new HashSet<>(favoriteRepository.findFavoritedVideoIds(userId, videoIds))
+                    : Collections.emptySet();
             Map<Long, Long> commentCounts = loadCommentCounts(videoIds);
+            Map<Long, Long> favoriteCounts = loadFavoriteCounts(videoIds);
 
             List<Map<String, Object>> mappedVideos = new ArrayList<>();
             for (Video v : pageVideos) {
                 boolean liked = likedVideoIds.contains(v.getId());
-                mappedVideos.add(VideoResponseMapper.toFeedItem(v, liked, commentCounts.getOrDefault(v.getId(), 0L)));
+                boolean favorited = favoritedVideoIds.contains(v.getId());
+                mappedVideos.add(VideoResponseMapper.toFeedItem(
+                        v, liked, favorited, favoriteCounts.getOrDefault(v.getId(), 0L), commentCounts.getOrDefault(v.getId(), 0L)));
             }
 
             Map<String, Object> pagination = new HashMap<>();
@@ -393,6 +406,61 @@ public class VideoController {
         }
     }
 
+    // Toggle video favorite (收藏)
+    @PutMapping("/videos/{id}/favorite")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> toggleFavorite(@PathVariable("id") Long videoId, HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            // 1. Check video exists
+            if (!videoRepository.existsById(videoId)) {
+                response.put("success", false);
+                response.put("message", "Video not found.");
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            }
+
+            // 2. Check if already favorited
+            Optional<Favorite> optionalFav = favoriteRepository.findByUserIdAndVideoId(userId, videoId);
+
+            boolean favorited;
+            long count;
+            if (optionalFav.isPresent()) {
+                // Unfavorite
+                favoriteRepository.delete(optionalFav.get());
+                favorited = false;
+                response.put("message", "Video unfavorited.");
+            } else {
+                // Favorite
+                Favorite fav = new Favorite();
+                fav.setUserId(userId);
+                fav.setVideoId(videoId);
+                favoriteRepository.save(fav);
+                favorited = true;
+                response.put("message", "Video favorited!");
+            }
+
+            count = favoriteRepository.countByVideoId(videoId);
+            response.put("success", true);
+            VideoResponseMapper.putFavoriteFields(response, favorited, count);
+
+            redisCacheService.evictPrefix(recommendationsCachePrefix(userId));
+            redisCacheService.evict("admin:stats");
+            return ResponseEntity.ok(response);
+        } catch (DataIntegrityViolationException duplicateFav) {
+            long count = favoriteRepository.countByVideoId(videoId);
+            response.put("success", true);
+            response.put("message", "Video already favorited.");
+            VideoResponseMapper.putFavoriteFields(response, true, count);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("message", "Error toggling favorite: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
     // ----------------------------------------------------
     // SEARCH — 搜索视频（标题、描述、标签、评论内容）和用户
     // ----------------------------------------------------
@@ -436,6 +504,11 @@ public class VideoController {
         Set<Long> likedVideoIds = (currentUserId != null && !videoIds.isEmpty())
                 ? new HashSet<>(likeRepository.findLikedVideoIds(currentUserId, videoIds))
                 : Collections.emptySet();
+        Set<Long> favoritedVideoIds = (currentUserId != null && !videoIds.isEmpty())
+                ? new HashSet<>(favoriteRepository.findFavoritedVideoIds(currentUserId, videoIds))
+                : Collections.emptySet();
+        Map<Long, Long> commentCounts = loadCommentCounts(videoIds);
+        Map<Long, Long> favoriteCounts = loadFavoriteCounts(videoIds);
 
         List<Map<String, Object>> videoResults = new ArrayList<>();
         for (Video v : videoMap.values()) {
@@ -443,7 +516,9 @@ public class VideoController {
                 continue;
             }
             boolean liked = likedVideoIds.contains(v.getId());
-            videoResults.add(VideoResponseMapper.toFeedItem(v, liked));
+            boolean favorited = favoritedVideoIds.contains(v.getId());
+            videoResults.add(VideoResponseMapper.toFeedItem(
+                    v, liked, favorited, favoriteCounts.getOrDefault(v.getId(), 0L), commentCounts.getOrDefault(v.getId(), 0L)));
         }
 
         // 6. 组装用户响应
@@ -690,13 +765,18 @@ public class VideoController {
             Set<Long> likedVideoIds = videoIds.isEmpty()
                     ? Collections.emptySet()
                     : likeRepository.findLikedVideoIds(userId, videoIds);
+            Set<Long> favoritedVideoIds = (userId != null && !videoIds.isEmpty())
+                    ? favoriteRepository.findFavoritedVideoIds(userId, videoIds)
+                    : Collections.emptySet();
             Map<Long, Long> commentCounts = loadCommentCounts(videoIds);
+            Map<Long, Long> favoriteCounts = loadFavoriteCounts(videoIds);
 
             List<Map<String, Object>> mappedVideos = new ArrayList<>();
             for (Video video : pageVideos) {
                 boolean liked = likedVideoIds.contains(video.getId());
+                boolean favorited = favoritedVideoIds.contains(video.getId());
                 mappedVideos.add(VideoResponseMapper.toFeedItem(
-                        video, liked, commentCounts.getOrDefault(video.getId(), 0L)));
+                        video, liked, favorited, favoriteCounts.getOrDefault(video.getId(), 0L), commentCounts.getOrDefault(video.getId(), 0L)));
             }
 
             Map<String, Object> pagination = new HashMap<>();
@@ -1068,6 +1148,17 @@ public class VideoController {
         }
         Map<Long, Long> counts = new HashMap<>();
         for (Object[] row : commentRepository.countGroupByVideoIds(videoIds)) {
+            counts.put((Long) row[0], (Long) row[1]);
+        }
+        return counts;
+    }
+
+    private Map<Long, Long> loadFavoriteCounts(Collection<Long> videoIds) {
+        if (videoIds == null || videoIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<Long, Long> counts = new HashMap<>();
+        for (Object[] row : favoriteRepository.countGroupByVideoIds(videoIds)) {
             counts.put((Long) row[0], (Long) row[1]);
         }
         return counts;

@@ -15,10 +15,14 @@ public final class VideoResponseMapper {
     }
 
     public static Map<String, Object> toFeedItem(Video video, boolean liked) {
-        return toFeedItem(video, liked, 0);
+        return toFeedItem(video, liked, false, 0, 0);
     }
 
     public static Map<String, Object> toFeedItem(Video video, boolean liked, long commentCount) {
+        return toFeedItem(video, liked, false, 0, commentCount);
+    }
+
+    public static Map<String, Object> toFeedItem(Video video, boolean liked, boolean favorited, long favoriteCount, long commentCount) {
         int likeCount = video.getLikesCount() == null ? 0 : video.getLikesCount();
 
         Map<String, Object> item = new HashMap<>();
@@ -30,12 +34,12 @@ public final class VideoResponseMapper {
         item.put("cover_url", video.getCoverUrl());
         item.put("views_count", 0);
         item.put("comments_count", commentCount);
-        item.put("favorites_count", 0);
         item.put("status", "published");
         item.put("created_at", video.getCreatedAt() == null ? null : video.getCreatedAt().toString());
         item.put("creator_name", video.getUser().getUsername());
 
         putLikeFields(item, liked, likeCount);
+        putFavoriteFields(item, favorited, favoriteCount);
         return item;
     }
 
@@ -45,6 +49,14 @@ public final class VideoResponseMapper {
         // Legacy aliases kept for older clients
         target.put("is_liked", liked ? 1 : 0);
         target.put("likes_count", likeCount);
+    }
+
+    public static void putFavoriteFields(Map<String, Object> target, boolean favorited, long favoriteCount) {
+        target.put("favorited", favorited);
+        target.put("favoriteCount", favoriteCount);
+        // Legacy aliases kept for older clients
+        target.put("is_favorited", favorited ? 1 : 0);
+        target.put("favorites_count", favoriteCount);
     }
 
 }

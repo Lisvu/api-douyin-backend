@@ -223,6 +223,19 @@ public class UserController {
         return ResponseEntity.ok(buildLikedVideosPage(id, viewerId, cursor, limit));
     }
 
+    @GetMapping("/{id}/favorited-videos")
+    public ResponseEntity<Map<String, Object>> getUserFavoritedVideos(
+            @PathVariable("id") Long id,
+            @RequestParam(value = "cursor", required = false) String cursor,
+            @RequestParam(value = "limit", defaultValue = "8") int limit,
+            HttpServletRequest request) {
+        if (!userRepository.existsById(id)) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "User not found.");
+        }
+        Long viewerId = (Long) request.getAttribute("userId");
+        return ResponseEntity.ok(buildFavoritedVideosPage(id, viewerId, cursor, limit));
+    }
+
     @DeleteMapping("/me")
     @Transactional
     @CacheEvict(value = "users", key = "#request.getAttribute('userId')")
@@ -275,6 +288,18 @@ public class UserController {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "User context is missing.");
         }
         return ResponseEntity.ok(buildLikedVideosPage(userId, userId, cursor, limit));
+    }
+
+    @GetMapping("/me/favorited-videos")
+    public ResponseEntity<Map<String, Object>> getFavoritedVideos(
+            @RequestParam(value = "cursor", required = false) String cursor,
+            @RequestParam(value = "limit", defaultValue = "8") int limit,
+            HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        if (userId == null) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "User context is missing.");
+        }
+        return ResponseEntity.ok(buildFavoritedVideosPage(userId, userId, cursor, limit));
     }
 
     private Map<String, Object> buildLikedVideosPage(Long ownerId, Long viewerId, String cursor, int limit) {
@@ -512,5 +537,81 @@ public class UserController {
     private void deleteLocalFilesForVideo(Video video) {
         mediaStorageService.deleteMedia(video.getVideoUrl());
         mediaStorageService.deleteMedia(video.getCoverUrl());
+    }
+
+    private Map<String, Object> buildFavoritedVideosPage(Long ownerId, Long viewerId, String cursor, int limit) {
+        int safeLimit = Math.min(Math.max(limit, 1), 50);
+        Pageable pageable = PageRequest.of(0, safeLimit + 1);
+
+        CursorParts cursorParts = decodeCursor(cursor);
+        List<com.douyin.api.model.Favorite> rawFavorites = cursorParts == null
+                ? favoriteRepository.findByUserIdOrderByCreatedAtDescIdDesc(ownerId, pageable)
+                : favoriteRepository.findByUserIdBeforeCursor(ownerId, cursorParts.createdAt(), cursorParts.id(), pageable);
+        boolean hasMore = rawFavorites.size() > safeLimit;
+        List<com.douyin.api.model.Favorite> pageFavorites = hasMore ? rawFavorites.subList(0, safeLimit) : rawFavorites;
+
+        List<Map<String, Object>> videos = new ArrayList<>();
+        if (!pageFavorites.isEmpty()) {
+            List<Long> videoIds = pageFavorites.stream().map(com.douyin.api.model.Favorite::getVideoId).toList();
+            List<Video> videoEntities = videoRepository.findByIdInOrderByCreatedAtDesc(videoIds);
+            Map<Long, Video> videoMap = new HashMap<>();
+            for (Video v : videoEntities) {
+                videoMap.put(v.getId(), v);
+            }
+            Set<Long> likedByViewer = viewerId == null
+                    ? Collections.emptySet()
+                    : likeRepository.findLikedVideoIds(viewerId, videoIds);
+            Set<Long> favoritedByViewer = viewerId == null
+                    ? Collections.emptySet()
+                    : favoriteRepository.findFavoritedVideoIds(viewerId, videoIds);
+            Map<Long, Long> commentCounts = loadCommentCounts(videoIds);
+            Map<Long, Long> favoriteCounts = loadFavoriteCounts(videoIds);
+
+            for (com.douyin.api.model.Favorite fav : pageFavorites) {
+                Video v = videoMap.get(fav.getVideoId());
+                if (v != null) {
+                    boolean liked = likedByViewer.contains(v.getId());
+                    boolean favorited = favoritedByViewer.contains(v.getId());
+                    videos.add(VideoResponseMapper.toFeedItem(
+                            v, liked, favorited, favoriteCounts.getOrDefault(v.getId(), 0L), commentCounts.getOrDefault(v.getId(), 0L)));
+                }
+            }
+        }
+
+        Map<String, Object> pagination = new HashMap<>();
+        pagination.put("limit", safeLimit);
+        pagination.put("hasMore", hasMore);
+        pagination.put("nextCursor", hasMore && !pageFavorites.isEmpty()
+                ? encodeCursor(pageFavorites.get(pageFavorites.size() - 1).getCreatedAt(),
+                               pageFavorites.get(pageFavorites.size() - 1).getId())
+                : null);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("videos", videos);
+        response.put("pagination", pagination);
+        return response;
+    }
+
+    private Map<Long, Long> loadCommentCounts(Collection<Long> videoIds) {
+        if (videoIds == null || videoIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<Long, Long> counts = new HashMap<>();
+        for (Object[] row : commentRepository.countGroupByVideoIds(videoIds)) {
+            counts.put((Long) row[0], (Long) row[1]);
+        }
+        return counts;
+    }
+
+    private Map<Long, Long> loadFavoriteCounts(Collection<Long> videoIds) {
+        if (videoIds == null || videoIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<Long, Long> counts = new HashMap<>();
+        for (Object[] row : favoriteRepository.countGroupByVideoIds(videoIds)) {
+            counts.put((Long) row[0], (Long) row[1]);
+        }
+        return counts;
     }
 }

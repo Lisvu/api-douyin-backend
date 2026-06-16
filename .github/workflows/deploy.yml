@@ -1,17 +1,36 @@
-name: Deploy to Server
+name: Deploy Backend
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1
+      - name: Deploy backend on server
+        uses: appleboy/ssh-action@v1.2.0
         with:
-          host: 165.232.172.99
-          username: lihao
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
-          script: /home/lihao/deploy.sh
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+            sudo -u lihao bash -lc '
+              set -e
+              cd /home/lihao/api-douyin-backend
+              git fetch origin main
+              git reset --hard origin/main
+              mvn -q -DskipTests compile
+            '
+
+            pkill -f "spring-boot:run -q -Dspring-boot.run.profiles=server" || true
+            pkill -f "com.douyin.api.ApiDouyinApplication" || true
+
+            sudo -u lihao bash -lc '
+              cd /home/lihao/api-douyin-backend
+              nohup mvn spring-boot:run -q -Dspring-boot.run.profiles=server > /home/lihao/backend.log 2>&1 < /dev/null &
+            '
