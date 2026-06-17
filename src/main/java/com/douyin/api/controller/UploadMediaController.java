@@ -1,5 +1,6 @@
 package com.douyin.api.controller;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -20,8 +21,12 @@ public class UploadMediaController {
 
     private final Path uploadRoot;
 
-    public UploadMediaController() {
-        this.uploadRoot = Paths.get(System.getProperty("user.dir"), "public", "uploads")
+    public UploadMediaController(
+            @Value("${app.media.local-upload-dir:public/uploads}") String localUploadDir) {
+        Path configuredPath = Path.of(localUploadDir);
+        this.uploadRoot = (configuredPath.isAbsolute()
+                ? configuredPath
+                : Path.of(System.getProperty("user.dir")).resolve(configuredPath))
                 .toAbsolutePath()
                 .normalize();
         File dir = uploadRoot.toFile();

@@ -25,6 +25,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 
+import com.douyin.api.util.LocalMediaAvailability;
+
 import javax.imageio.ImageIO;
 
 @Service
@@ -60,6 +62,8 @@ public class MediaStorageService {
         this.remoteUsername = remoteUsername;
         this.remotePassword = remotePassword;
         this.remoteUploadDir = trimTrailingSlash(remoteUploadDir);
+
+        LocalMediaAvailability.setUploadRoot(this.localUploadDir);
     }
 
     public String storeUpload(MultipartFile file, String folder, String filename) throws IOException {

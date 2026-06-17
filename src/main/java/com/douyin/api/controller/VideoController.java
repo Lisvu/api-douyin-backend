@@ -939,7 +939,7 @@ public class VideoController {
     @Cacheable(value = "userVideos", key = "#request.getAttribute('userId') + '-' + (#cursor ?: 'first') + '-' + #limit")
     public ResponseEntity<Map<String, Object>> getMyVideos(
             @RequestParam(value = "cursor", required = false) String cursor,
-            @RequestParam(value = "limit", defaultValue = "6") int limit,
+            @RequestParam(value = "limit", defaultValue = "8") int limit,
             HttpServletRequest request) {
 
         Long userId = (Long) request.getAttribute("userId");
