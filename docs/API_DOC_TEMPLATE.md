@@ -736,6 +736,155 @@ curl -X PUT "http://localhost:8080/api/v1/users/me/like-notifications/read" \
 
 ---
 
+## 查看视频评论（F15）
+
+- 接口说明：分页查询指定视频的顶层评论列表（cursor 分页），并返回评论总数。评论按创建时间倒序。
+- 请求方法：`GET`
+- 请求路径：`/api/v1/videos/{id}/comments`
+- 是否需要登录：`是`
+
+### Path 参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `id` | `Long` | 是 | 视频 ID |
+
+### Query 参数
+
+| 参数名 | 类型 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `cursor` | `String` | 否 | - | 上一页返回的 `pagination.nextCursor` |
+| `limit` | `Integer` | 否 | `20` | 每页条数，最大 50 |
+
+### 成功响应 `200 OK`
+
+```json
+{
+  "success": true,
+  "comments": [
+    {
+      "id": 4,
+      "videoId": 128,
+      "userId": 6,
+      "username": "zyq",
+      "displayName": "zyq",
+      "avatarUrl": "/uploads/avatars/zyq.png",
+      "content": "这条视频真不错",
+      "createdAt": "2026-06-15T12:06:41.350355"
+    }
+  ],
+  "totalCount": 12,
+  "pagination": {
+    "limit": 20,
+    "hasMore": false,
+    "nextCursor": null
+  }
+}
+```
+
+### 失败响应
+
+| 状态码 | 说明 |
+| --- | --- |
+| `401` | 未登录 |
+| `404` | 视频不存在 |
+
+---
+
+## 发表评论（F15）
+
+- 接口说明：当前登录用户对指定视频发表文字评论，内容不能为空且不超过 500 字。
+- 请求方法：`POST`
+- 请求路径：`/api/v1/videos/{id}/comments`
+- 是否需要登录：`是`
+
+### Body 参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `content` | `String` | 是 | 评论内容，1–500 字 |
+
+### 请求示例
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/videos/128/comments" \
+  -H "Authorization: Bearer <jwt-token>" \
+  -H "Content-Type: application/json" \
+  -d "{\"content\":\"评论内容示例\"}"
+```
+
+### 成功响应 `201 Created`
+
+```json
+{
+  "success": true,
+  "message": "Comment posted.",
+  "comment": {
+    "id": 4,
+    "videoId": 128,
+    "userId": 6,
+    "username": "zyq",
+    "content": "评论内容示例",
+    "createdAt": "2026-06-15T12:06:41.350355"
+  },
+  "commentsCount": 13
+}
+```
+
+---
+
+## 查看用户主页（F16）
+
+- 接口说明：查询指定用户的公开主页资料，含获赞总数、作品数、关注/粉丝/朋友数量等。
+- 请求方法：`GET`
+- 请求路径：`/api/v1/users/{id}`
+- 是否需要登录：`是`
+
+### 成功响应 `200 OK`
+
+```json
+{
+  "success": true,
+  "user": {
+    "id": 6,
+    "username": "zyq",
+    "displayName": "zyq",
+    "avatarUrl": "/uploads/avatars/zyq.png",
+    "totalLikesReceived": 120,
+    "publishedVideoCount": 8,
+    "followingCount": 5,
+    "followerCount": 12,
+    "friendCount": 3
+  }
+}
+```
+
+---
+
+## 查看用户发布的视频（F16）
+
+- 请求方法：`GET`
+- 请求路径：`/api/v1/users/{id}/videos`
+- Query：`cursor`、`limit`（默认 8，最大 50）
+- 说明：cursor 分页返回该用户发布的视频，字段与推荐流视频项一致（含 `liked`、`likeCount`、`comments_count`）。
+
+---
+
+## 查看用户点赞的视频（F16）
+
+- 请求方法：`GET`
+- 请求路径：`/api/v1/users/{id}/liked-videos`
+- Query：`cursor`、`limit`（默认 8，最大 50）
+- 说明：cursor 分页返回该用户点赞过的视频，按点赞时间倒序。
+
+### 前端交互说明（F16）
+
+- 推荐流点击侧栏头像或 `@创作者` 进入 `/users/{id}` 对应的主页视图。
+- 主页 Tab 可切换「发布的视频」「点赞的视频」，支持「加载更多」。
+- 点击视频卡片可回到播放流播放该视频。
+
+---
+
 ## 删除我的视频
 
 - 接口说明：删除当前登录用户自己发布的视频。只能删除自己的视频，删除他人视频会返回 403 权限错误。删除时会同时删除视频文件、封面文件以及相关的点赞记录和观看记录。
