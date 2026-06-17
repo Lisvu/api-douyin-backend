@@ -885,7 +885,7 @@ curl -X POST "http://localhost:8080/api/v1/videos/128/comments" \
 
 ---
 
-## 删除我的视频
+## 删除我的视频（F07)
 
 - 接口说明：删除当前登录用户自己发布的视频。只能删除自己的视频，删除他人视频会返回 403 权限错误。删除时会同时删除视频文件、封面文件以及相关的点赞记录和观看记录。
 - 请求方法：`DELETE`
@@ -967,7 +967,7 @@ curl -X DELETE "http://165.232.172.99:8080/api/v1/videos/12" \
 
 ---
 
-## 查询业务日志记录
+## 查询业务日志记录 (F11)
 
 - 接口说明：获取系统所有 API 请求的详细日志记录，包含请求入参、响应出参、HTTP 状态码和接口响应耗时。用于监控系统运行状态和性能分析。
 - 请求方法：`GET`
@@ -1044,7 +1044,7 @@ curl -X GET "http://165.232.172.99:8080/api/v1/admin/request-logs?limit=20&page=
 
 ---
 
-## 系统监控统计数据
+## 系统监控统计数据 F(12)
 
 - 接口说明：获取系统整体的监控统计数据，包括用户数、视频数、点赞总数、观看总数、平均 API 响应耗时、总请求数等。
 - 请求方法：`GET`
@@ -1512,3 +1512,421 @@ curl -X GET "http://localhost:8080/api/v1/users/me/videos?cursor=MjAyNi0wNi0xN1Q
 - 视频列表不包含文件已损坏或不可播放的视频（`LocalMediaAvailability.isPlayableUrl` 过滤）。
 - 每条视频的 `liked`、`favorited` 等状态基于当前登录用户计算。
 - 视频项字段与推荐流（F02）一致，前端可复用同一视频卡片组件。
+
+
+
+## 关注用户
+
+- 接口说明：当前登录用户关注指定用户。若双方互相关注则自动成为好友。
+- 请求方法：`POST`
+- 请求路径：`/api/v1/users/{id}/follow`
+- 是否需要登录：`是`
+
+### Path 参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `id` | `Long` | 是 | 目标用户 ID |
+
+### 请求示例
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/users/6/follow" \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+### 成功响应 `200 OK`
+
+```json
+{
+  "success": true,
+  "message": "关注成功",
+  "isFriend": false,
+  "followingCount": 3,
+  "friendCount": 1
+}
+```
+
+互关成为好友时 `message` 为 `"关注成功，你们已成为好友！"`，`isFriend` 为 `true`。
+
+### 失败响应
+
+`400 Bad Request - 关注自己`
+
+```json
+{
+  "success": false,
+  "message": "不能关注自己"
+}
+```
+
+`400 Bad Request - 已关注`
+
+```json
+{
+  "success": false,
+  "message": "已经关注该用户"
+}
+```
+
+`404 Not Found`
+
+```json
+{
+  "success": false,
+  "message": "用户不存在"
+}
+```
+
+### 响应字段说明
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `isFriend` | `boolean` | 关注后是否与对方互关成为好友 |
+| `followingCount` | `Long` | 当前用户关注总数 |
+| `friendCount` | `Long` | 当前用户好友（互关）总数 |
+
+### 错误码说明
+
+| 状态码 | 说明 |
+| --- | --- |
+| `200` | 关注成功 |
+| `400` | 关注自己；或已关注该用户 |
+| `401` | 未登录或 Token 无效 |
+| `404` | 目标用户不存在 |
+
+---
+
+## 取消关注用户
+
+- 接口说明：当前登录用户取消关注指定用户，好友关系同步解除。
+- 请求方法：`DELETE`
+- 请求路径：`/api/v1/users/{id}/follow`
+- 是否需要登录：`是`
+
+### Path 参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `id` | `Long` | 是 | 目标用户 ID |
+
+### 请求示例
+
+```bash
+curl -X DELETE "http://localhost:8080/api/v1/users/6/follow" \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+### 成功响应 `200 OK`
+
+```json
+{
+  "success": true,
+  "message": "已取消关注",
+  "followingCount": 2,
+  "friendCount": 0
+}
+```
+
+### 失败响应
+
+`400 Bad Request`
+
+```json
+{
+  "success": false,
+  "message": "你还没有关注该用户"
+}
+```
+
+### 错误码说明
+
+| 状态码 | 说明 |
+| --- | --- |
+| `200` | 取消关注成功 |
+| `400` | 原本未关注该用户 |
+| `401` | 未登录或 Token 无效 |
+
+---
+
+## 获取我关注的用户列表
+
+- 接口说明：返回当前登录用户关注的所有用户，含是否互关标识，用于「关注」Tab 左侧用户列表展示。
+- 请求方法：`GET`
+- 请求路径：`/api/v1/users/me/following`
+- 是否需要登录：`是`
+
+### 请求示例
+
+```bash
+curl -X GET "http://localhost:8080/api/v1/users/me/following" \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+### 成功响应 `200 OK`
+
+```json
+{
+  "success": true,
+  "users": [
+    {
+      "id": 6,
+      "username": "creator_a",
+      "displayName": "Creator A",
+      "avatarUrl": null,
+      "isFriend": true
+    }
+  ],
+  "count": 1
+}
+```
+
+### 响应字段说明
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `users` | `Array` | 关注的用户列表；无关注时为空数组 |
+| `users[].isFriend` | `boolean` | 该用户是否与我互关（好友） |
+| `count` | `Integer` | 关注总数 |
+
+### 错误码说明
+
+| 状态码 | 说明 |
+| --- | --- |
+| `200` | 查询成功 |
+| `401` | 未登录或 Token 无效 |
+
+---
+
+## 获取我的粉丝列表
+
+- 接口说明：返回关注了当前登录用户的所有用户，含是否互关标识。
+- 请求方法：`GET`
+- 请求路径：`/api/v1/users/me/followers`
+- 是否需要登录：`是`
+
+### 请求示例
+
+```bash
+curl -X GET "http://localhost:8080/api/v1/users/me/followers" \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+### 成功响应 `200 OK`
+
+```json
+{
+  "success": true,
+  "users": [
+    {
+      "id": 7,
+      "username": "fan_user",
+      "displayName": "Fan User",
+      "avatarUrl": null,
+      "isFriend": false
+    }
+  ],
+  "count": 1
+}
+```
+
+### 错误码说明
+
+| 状态码 | 说明 |
+| --- | --- |
+| `200` | 查询成功 |
+| `401` | 未登录或 Token 无效 |
+
+---
+
+## 获取我的朋友列表（互关用户）
+
+- 接口说明：返回当前登录用户的互关好友列表，用于「朋友」Tab 左侧列表展示。
+- 请求方法：`GET`
+- 请求路径：`/api/v1/users/me/friends`
+- 是否需要登录：`是`
+
+### 请求示例
+
+```bash
+curl -X GET "http://localhost:8080/api/v1/users/me/friends" \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+### 成功响应 `200 OK`
+
+```json
+{
+  "success": true,
+  "friends": [
+    {
+      "id": 6,
+      "username": "creator_a",
+      "displayName": "Creator A",
+      "avatarUrl": null,
+      "isFriend": true
+    }
+  ],
+  "count": 1
+}
+```
+
+### 响应字段说明
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `friends` | `Array` | 互关好友列表；无好友时为空数组 |
+| `friends[].isFriend` | `boolean` | 固定为 `true` |
+| `count` | `Integer` | 好友总数 |
+
+### 错误码说明
+
+| 状态码 | 说明 |
+| --- | --- |
+| `200` | 查询成功 |
+| `401` | 未登录或 Token 无效 |
+
+---
+
+## 查询关注关系
+
+- 接口说明：查询当前登录用户与指定用户之间的关注关系，用于推荐流侧栏关注按钮状态回显。
+- 请求方法：`GET`
+- 请求路径：`/api/v1/users/{id}/relation`
+- 是否需要登录：`是`
+
+### Path 参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `id` | `Long` | 是 | 目标用户 ID |
+
+### 请求示例
+
+```bash
+curl -X GET "http://localhost:8080/api/v1/users/6/relation" \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+### 成功响应 `200 OK`
+
+```json
+{
+  "success": true,
+  "isFollowing": true,
+  "isFollowedBy": false,
+  "isFriend": false,
+  "followingCount": 3,
+  "followerCount": 5,
+  "friendCount": 1
+}
+```
+
+### 响应字段说明
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `isFollowing` | `boolean` | 当前用户是否已关注目标用户 |
+| `isFollowedBy` | `boolean` | 目标用户是否关注了当前用户 |
+| `isFriend` | `boolean` | 双方是否互关（`isFollowing && isFollowedBy`） |
+| `followingCount` | `Long` | 当前用户关注总数 |
+| `followerCount` | `Long` | 当前用户粉丝总数 |
+| `friendCount` | `Long` | 当前用户好友（互关）总数 |
+
+### 错误码说明
+
+| 状态码 | 说明 |
+| --- | --- |
+| `200` | 查询成功 |
+| `401` | 未登录或 Token 无效 |
+
+---
+
+## 搜索视频与用户
+
+- 接口说明：根据关键词搜索视频（标题、描述、标签、评论内容）和用户名，返回合并去重后的视频列表（标题匹配优先）和用户列表，用于顶部搜索框下拉结果和搜索结果页展示。
+- 请求方法：`GET`
+- 请求路径：`/api/v1/videos/search`
+- 是否需要登录：`是`
+
+### Query 参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `q` | `String` | 是 | 搜索关键词，不能为空 |
+
+### 请求示例
+
+```bash
+curl -X GET "http://localhost:8080/api/v1/videos/search?q=游戏" \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+### 成功响应 `200 OK`
+
+```json
+{
+  "success": true,
+  "keyword": "游戏",
+  "videos": [
+    {
+      "id": 3,
+      "title": "热门游戏攻略",
+      "creator_name": "gamer_x",
+      "cover_url": "/uploads/covers/cover-xxx.jpg",
+      "video_url": "/uploads/videos/video-xxx.mp4",
+      "likeCount": 320,
+      "liked": false,
+      "favorited": false,
+      "favoriteCount": 5,
+      "comments_count": 12
+    }
+  ],
+  "users": [
+    {
+      "id": 7,
+      "username": "gamer_x",
+      "displayName": "GamerX",
+      "avatarUrl": null
+    }
+  ]
+}
+```
+
+### 失败响应
+
+`400 Bad Request`
+
+```json
+{
+  "success": false,
+  "message": "搜索关键词不能为空"
+}
+```
+
+### 响应字段说明
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `keyword` | `String` | 实际搜索的关键词（trim 后） |
+| `videos` | `Array` | 匹配的视频列表，最多 20 条；标题/描述匹配优先，评论内容匹配次之；不可播放的视频自动过滤；字段与推荐流视频项一致 |
+| `users` | `Array` | 匹配的用户列表，最多 20 条 |
+| `users[].id` | `Long` | 用户 ID |
+| `users[].username` | `String` | 用户名 |
+| `users[].displayName` | `String` | 展示名 |
+| `users[].avatarUrl` | `String` | 头像 URL |
+
+### 业务规则
+
+- 视频搜索同时检索标题、描述（含标签）和评论内容，结果合并去重，标题匹配排在前。
+- 不可播放的视频 URL（本地文件不存在）会被自动过滤，不出现在结果中。
+- 视频结果包含当前用户的点赞状态（`liked`）和收藏状态（`favorited`），逻辑与推荐流一致。
+- 每类结果最多返回 20 条。
+
+### 错误码说明
+
+| 状态码 | 说明 |
+| --- | --- |
+| `200` | 查询成功；无匹配结果时 `videos` 和 `users` 均为空数组 |
+| `400` | 关键词为空 |
+| `401` | 未登录或 Token 无效 |
