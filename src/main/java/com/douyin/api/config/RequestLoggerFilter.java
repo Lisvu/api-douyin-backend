@@ -40,7 +40,7 @@ public class RequestLoggerFilter implements Filter {
         if (url.contains("/h2-console")
                 || url.contains("/api/v1/admin/request-logs")
                 || url.contains("/api/v1/admin/stats")
-                || url.contains("/download")
+                || url.contains("/file")
                 || url.startsWith("/uploads/")
                 || "OPTIONS".equalsIgnoreCase(httpRequest.getMethod())) {
             chain.doFilter(request, response);

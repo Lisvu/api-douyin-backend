@@ -21,6 +21,7 @@ import com.douyin.api.repository.WatchLaterRepository;
 import com.douyin.api.service.MediaStorageService;
 import com.douyin.api.service.RedisCacheService;
 import com.douyin.api.util.VideoResponseMapper;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
@@ -262,7 +263,7 @@ public class UserController {
 
     private record CursorParts(LocalDateTime createdAt, Long id) {}
 
-    @PutMapping("/me/like-notifications/read")
+    @PutMapping("/me/like-notifications/read-receipts")
     @Transactional
     public ResponseEntity<Map<String, Object>> markLikeNotificationsRead(HttpServletRequest request) {
         User user = getCurrentUserOrThrow(request);
@@ -349,7 +350,7 @@ public class UserController {
         return ResponseEntity.ok(buildPublishedVideosPage(id, viewerId, cursor, limit));
     }
 
-    @GetMapping("/{id}/liked-videos")
+    @GetMapping("/{id}/likes/videos")
     public ResponseEntity<Map<String, Object>> getUserLikedVideos(
             @PathVariable("id") Long id,
             @RequestParam(value = "cursor", required = false) String cursor,
@@ -362,7 +363,7 @@ public class UserController {
         return ResponseEntity.ok(buildLikedVideosPage(id, viewerId, cursor, limit));
     }
 
-    @GetMapping("/{id}/favorited-videos")
+    @GetMapping("/{id}/favorites/videos")
     public ResponseEntity<Map<String, Object>> getUserFavoritedVideos(
             @PathVariable("id") Long id,
             @RequestParam(value = "cursor", required = false) String cursor,
@@ -423,7 +424,7 @@ public class UserController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/me/liked-videos")
+    @GetMapping("/me/likes/videos")
     public ResponseEntity<Map<String, Object>> getLikedVideos(
             @RequestParam(value = "cursor", required = false) String cursor,
             @RequestParam(value = "limit", defaultValue = "8") int limit,
@@ -435,7 +436,7 @@ public class UserController {
         return ResponseEntity.ok(buildLikedVideosPage(userId, userId, cursor, limit));
     }
 
-    @GetMapping("/me/favorited-videos")
+    @GetMapping("/me/favorites/videos")
     public ResponseEntity<Map<String, Object>> getFavoritedVideos(
             @RequestParam(value = "cursor", required = false) String cursor,
             @RequestParam(value = "limit", defaultValue = "8") int limit,
@@ -534,7 +535,8 @@ public class UserController {
         return response;
     }
 
-    @GetMapping("/search")
+    @GetMapping
+    @Operation(summary = "搜索用户")
     public ResponseEntity<Map<String, Object>> searchUsers(
             @RequestParam("q") String keyword,
             HttpServletRequest request) {
@@ -564,7 +566,8 @@ public class UserController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/me/shared-videos")
+
+    @GetMapping("/me/shares/videos")
     public ResponseEntity<Map<String, Object>> getSharedVideos(
             @RequestParam(value = "cursor", required = false) String cursor,
             @RequestParam(value = "limit", defaultValue = "8") int limit,
@@ -624,7 +627,7 @@ public class UserController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/me/watch-later")
+    @GetMapping("/me/watch-later-items/videos")
     public ResponseEntity<Map<String, Object>> getWatchLaterVideos(
             @RequestParam(value = "cursor", required = false) String cursor,
             @RequestParam(value = "limit", defaultValue = "8") int limit,

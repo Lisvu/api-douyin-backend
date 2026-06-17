@@ -16,7 +16,7 @@ import java.util.Map;
 import java.util.Optional;
 
 @RestController
-@RequestMapping("/api/v1/auth")
+@RequestMapping("/api/v1")
 public class AuthController {
     private static final Duration AUTH_USER_TTL = Duration.ofMinutes(5);
 
@@ -31,7 +31,7 @@ public class AuthController {
     }
 
     // User Registration
-    @PostMapping("/register")
+    @PostMapping("/registrations")
     public ResponseEntity<Map<String, Object>> register(@RequestBody AuthRequest body) {
         String username = body.getUsername();
         String password = body.getPassword();
@@ -76,7 +76,7 @@ public class AuthController {
     }
 
     // User Login
-    @PostMapping("/login")
+    @PostMapping("/sessions")
     public ResponseEntity<Map<String, Object>> login(@RequestBody AuthRequest body) {
         String username = body.getUsername();
         String password = body.getPassword();

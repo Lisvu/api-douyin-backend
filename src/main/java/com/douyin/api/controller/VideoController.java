@@ -126,7 +126,7 @@ public class VideoController {
     // RECOMMENDER SYSTEM API ENDPOINTS
     // ----------------------------------------------------
 
-    @GetMapping("/videos/featured")
+    @GetMapping("/featured-videos")
     @Tag(name = "F02/F03 推荐流", description = "组员 A：推荐列表与切换数据")
     @Operation(summary = "精选浏览网格", description = "按热度排序返回可播放视频，供精选页多列网格展示。")
     public ResponseEntity<Map<String, Object>> browseVideos(
@@ -188,7 +188,7 @@ public class VideoController {
         }
     }
 
-    @GetMapping("/videos/recommendations")
+    @GetMapping("/video-recommendations")
     @Tag(name = "F02/F03 推荐流", description = "组员 A：推荐列表与切换数据")
     @Operation(summary = "获取推荐视频列表（F02）", description = "排除已观看视频，按 likeCount 降序，使用游标分页返回下一批。")
     @ApiResponses({
@@ -268,7 +268,7 @@ public class VideoController {
         }
     }
 
-    @PostMapping("/videos/public-samples")
+    @PostMapping("/public-sample-videos")
     @Transactional
     @CacheEvict(value = "userVideos", allEntries = true)
     public ResponseEntity<Map<String, Object>> importPublicSampleVideos(
@@ -368,7 +368,7 @@ public class VideoController {
     }
 
     // Toggle video like (点赞)
-    @PutMapping("/videos/{id}/like")
+    @PutMapping("/videos/{id}/likes/me")
     @Transactional
     public ResponseEntity<Map<String, Object>> toggleLike(@PathVariable("id") Long videoId, HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
@@ -421,7 +421,7 @@ public class VideoController {
     }
 
     // Toggle video favorite (收藏)
-    @PutMapping("/videos/{id}/favorite")
+    @PutMapping("/videos/{id}/favorites/me")
     @Transactional
     public ResponseEntity<Map<String, Object>> toggleFavorite(@PathVariable("id") Long videoId, HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("userId");
@@ -479,7 +479,8 @@ public class VideoController {
     // SEARCH — 搜索视频（标题、描述、标签、评论内容）和用户
     // ----------------------------------------------------
 
-    @GetMapping("/videos/search")
+    @GetMapping("/videos")
+    @Operation(summary = "搜索视频")
     public ResponseEntity<Map<String, Object>> searchVideos(
             @RequestParam("q") String keyword,
             HttpServletRequest request) {
@@ -552,6 +553,7 @@ public class VideoController {
         response.put("users", userResults);
         return ResponseEntity.ok(response);
     }
+
     // ----------------------------------------------------
     // VIDEO COMMENTS
     // ----------------------------------------------------
@@ -775,7 +777,7 @@ public class VideoController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @PostMapping("/videos/{id}/watch-later")
+    @PostMapping("/videos/{id}/watch-later-items/me")
     @Transactional
     public ResponseEntity<Map<String, Object>> addWatchLater(
             @PathVariable("id") Long videoId,
@@ -813,7 +815,7 @@ public class VideoController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @DeleteMapping("/videos/{id}/watch-later")
+    @DeleteMapping("/videos/{id}/watch-later-items/me")
     @Transactional
     public ResponseEntity<Map<String, Object>> removeWatchLater(
             @PathVariable("id") Long videoId,
@@ -835,7 +837,7 @@ public class VideoController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/videos/{id}/watch-later")
+    @GetMapping("/videos/{id}/watch-later-items/me")
     public ResponseEntity<Map<String, Object>> getWatchLaterStatus(
             @PathVariable("id") Long videoId,
             HttpServletRequest request) {
@@ -997,8 +999,8 @@ public class VideoController {
         }
     }
 
-    @GetMapping("/videos/{id}/download")
-    @Operation(summary = "下载视频文件到本地")
+    @GetMapping("/videos/{id}/file")
+    @Operation(summary = "获取视频文件")
     public ResponseEntity<StreamingResponseBody> downloadVideo(@PathVariable("id") Long videoId) throws IOException {
         Video video = videoRepository.findById(videoId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Video not found"));
@@ -1042,6 +1044,7 @@ public class VideoController {
 
         throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unsupported video URL");
     }
+
 
     // Delete My Video (owner permission checking)
     @DeleteMapping("/videos/{id}")
@@ -1094,7 +1097,7 @@ public class VideoController {
     }
 
     // Batch delete own videos
-    @PostMapping("/videos/batch-delete")
+    @PostMapping("/video-deletion-jobs")
     @Transactional
     @CacheEvict(value = "userVideos", allEntries = true)
     public ResponseEntity<Map<String, Object>> batchDeleteVideos(
@@ -1159,7 +1162,7 @@ public class VideoController {
     // SHARE VIDEO — Forward a video to another user
     // ----------------------------------------------------
 
-    @PostMapping("/videos/{id}/share")
+    @PostMapping("/videos/{id}/shares")
     @Transactional
     public ResponseEntity<Map<String, Object>> shareVideo(
             @PathVariable("id") Long videoId,

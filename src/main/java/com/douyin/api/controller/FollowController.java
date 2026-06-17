@@ -4,6 +4,7 @@ import com.douyin.api.model.User;
 import com.douyin.api.model.UserRelation;
 import com.douyin.api.repository.UserRelationRepository;
 import com.douyin.api.repository.UserRepository;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -28,9 +29,10 @@ public class FollowController {
 
     // ----------------------------------------------------
     // 关注某人
-    // POST /api/v1/users/{id}/follow
+    // POST /api/v1/users/{id}/relationships
     // ----------------------------------------------------
-    @PostMapping("/{id}/follow")
+    @PostMapping("/me/relationships/{id}")
+    @Operation(summary = "关注用户")
     @Transactional
     public ResponseEntity<Map<String, Object>> followUser(
             @PathVariable("id") Long targetUserId,
@@ -91,11 +93,12 @@ public class FollowController {
         }
     }
 
+
     // ----------------------------------------------------
-    // 取关某人
-    // DELETE /api/v1/users/{id}/follow
+    // DELETE /api/v1/users/{id}/relationships
     // ----------------------------------------------------
-    @DeleteMapping("/{id}/follow")
+    @DeleteMapping("/me/relationships/{id}")
+    @Operation(summary = "取消关注用户")
     @Transactional
     public ResponseEntity<Map<String, Object>> unfollowUser(
             @PathVariable("id") Long targetUserId,
@@ -127,11 +130,12 @@ public class FollowController {
         return ResponseEntity.ok(response);
     }
 
+
     // ----------------------------------------------------
     // 我关注的人列表
     // GET /api/v1/users/me/following
     // ----------------------------------------------------
-    @GetMapping("/me/following")
+    @GetMapping("/me/relationships/following")
     public ResponseEntity<Map<String, Object>> getFollowing(HttpServletRequest request) {
         Map<String, Object> response = new HashMap<>();
         Long currentUserId = (Long) request.getAttribute("userId");
@@ -155,7 +159,7 @@ public class FollowController {
     // 我的粉丝列表
     // GET /api/v1/users/me/followers
     // ----------------------------------------------------
-    @GetMapping("/me/followers")
+    @GetMapping("/me/relationships/followers")
     public ResponseEntity<Map<String, Object>> getFollowers(HttpServletRequest request) {
         Map<String, Object> response = new HashMap<>();
         Long currentUserId = (Long) request.getAttribute("userId");
@@ -179,7 +183,7 @@ public class FollowController {
     // 我的好友列表（互关）
     // GET /api/v1/users/me/friends
     // ----------------------------------------------------
-    @GetMapping("/me/friends")
+    @GetMapping("/me/relationships/friends")
     public ResponseEntity<Map<String, Object>> getFriends(HttpServletRequest request) {
         Map<String, Object> response = new HashMap<>();
         Long currentUserId = (Long) request.getAttribute("userId");
@@ -216,7 +220,7 @@ public class FollowController {
     // 查询当前用户与目标用户的关系
     // GET /api/v1/users/{id}/relation
     // ----------------------------------------------------
-    @GetMapping("/{id}/relation")
+    @GetMapping("/me/relationships/{id}")
     public ResponseEntity<Map<String, Object>> getRelation(
             @PathVariable("id") Long targetUserId,
             HttpServletRequest request) {

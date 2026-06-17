@@ -2,6 +2,7 @@ package com.douyin.api.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -55,7 +56,8 @@ public class AiController {
         this.verifySsl = verifySsl;
     }
 
-    @PostMapping(value = "/video-copy", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = "/video-copies", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "生成视频文案")
     public ResponseEntity<Map<String, Object>> generateVideoCopy(
             @RequestParam(value = "frame", required = false) MultipartFile frame,
             @RequestParam(value = "filename", required = false) String filename,
@@ -131,6 +133,7 @@ public class AiController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
+
 
     private HttpClient buildHttpClient() throws Exception {
         HttpClient.Builder builder = HttpClient.newBuilder()

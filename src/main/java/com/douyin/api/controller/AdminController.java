@@ -147,7 +147,7 @@ public class AdminController {
 
     private record CursorParts(LocalDateTime createdAt, Long id) {}
 
-    @PostMapping("/public-samples/redistribute-owners")
+    @PostMapping("/public-sample-owner-distributions")
     @Transactional
     public ResponseEntity<Map<String, Object>> redistributePublicSampleOwners(HttpServletRequest request) {
 

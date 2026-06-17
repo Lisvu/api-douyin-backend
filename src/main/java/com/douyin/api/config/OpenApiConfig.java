@@ -21,7 +21,7 @@ public class OpenApiConfig {
                         .description("""
                                 简易版抖音 REST API 文档。
                                 组员 A（F02/F03）：推荐列表、观看记录、重置观看。
-                                使用方式：先 POST /api/v1/auth/login 获取 token，再点击 Authorize 填入 Bearer <token>。
+                                使用方式：先 POST /api/v1/sessions 获取 token，再点击 Authorize 填入 Bearer <token>。
                                 """)
                         .version("v1"))
                 .components(new Components()
