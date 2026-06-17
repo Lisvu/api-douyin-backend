@@ -82,6 +82,7 @@ public class FollowController {
             response.put("message", isFriend ? "关注成功，你们已成为好友！" : "关注成功");
             response.put("isFriend", isFriend);
             response.put("followingCount", userRelationRepository.countByFollowerId(currentUserId));
+            response.put("friendCount", userRelationRepository.countMutualFollows(currentUserId));
             return ResponseEntity.ok(response);
         } catch (DataIntegrityViolationException e) {
             response.put("success", false);
@@ -122,6 +123,7 @@ public class FollowController {
         response.put("success", true);
         response.put("message", "已取消关注");
         response.put("followingCount", userRelationRepository.countByFollowerId(currentUserId));
+        response.put("friendCount", userRelationRepository.countMutualFollows(currentUserId));
         return ResponseEntity.ok(response);
     }
 
@@ -240,6 +242,7 @@ public class FollowController {
         response.put("isFriend", isFriend);          // 是否互关（好友）
         response.put("followingCount", userRelationRepository.countByFollowerId(currentUserId));
         response.put("followerCount", userRelationRepository.countByFollowingId(currentUserId));
+        response.put("friendCount", userRelationRepository.countMutualFollows(currentUserId));
         return ResponseEntity.ok(response);
     }
 

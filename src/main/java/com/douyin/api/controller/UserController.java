@@ -725,6 +725,7 @@ public class UserController {
         profile.put("publishedVideoCount", videoRepository.countByUserId(user.getId()));
         profile.put("followingCount", userRelationRepository.countByFollowerId(user.getId()));
         profile.put("followerCount", userRelationRepository.countByFollowingId(user.getId()));
+        profile.put("friendCount", userRelationRepository.countMutualFollows(user.getId()));
         return profile;
     }
 

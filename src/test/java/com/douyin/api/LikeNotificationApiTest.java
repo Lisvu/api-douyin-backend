@@ -119,6 +119,11 @@ class LikeNotificationApiTest {
             }
 
             @Override
+            public String getLikerAvatarUrl() {
+                return null;
+            }
+
+            @Override
             public Long getVideoId() {
                 return 9L;
             }

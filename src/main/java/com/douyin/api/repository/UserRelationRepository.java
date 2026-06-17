@@ -41,6 +41,16 @@ public interface UserRelationRepository extends JpaRepository<UserRelation, Long
             """)
     List<UserRelation> findMutualFollows(@Param("userId") Long userId);
 
+    @Query("""
+            SELECT COUNT(r) FROM UserRelation r
+            WHERE r.followerId = :userId
+              AND r.followingId IN (
+                  SELECT r2.followerId FROM UserRelation r2
+                  WHERE r2.followingId = :userId
+              )
+            """)
+    long countMutualFollows(@Param("userId") Long userId);
+
     // 统计我关注的人数
     long countByFollowerId(Long followerId);
 
