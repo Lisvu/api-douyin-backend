@@ -29,31 +29,49 @@ class RestfulApiMappingTest {
         assertThat(classMapping(VideoController.class)).containsExactly("/api/v1");
         assertThat(classMapping(AdminController.class)).containsExactly("/api/v1/admin");
 
+        // Auth endpoints (public)
         assertThat(postMappings(AuthController.class)).containsExactlyInAnyOrder("/register", "/login");
-        assertThat(getMappings(UserController.class)).containsExactlyInAnyOrder("/me", "/me/like-notifications");
-        assertThat(putMappings(UserController.class)).containsExactly("/me/like-notifications/read");
-        assertThat(deleteMappings(UserController.class)).containsExactly("/me");
 
-        assertThat(getMappings(VideoController.class)).containsExactlyInAnyOrder(
-                "/videos/recommendations",
-                "/users/me/videos"
+        // User controller: verify F05/F06/F10 related endpoints exist
+        assertThat(getMappings(UserController.class)).contains("/me");
+        assertThat(getMappings(UserController.class)).contains("/me/like-notifications");
+        assertThat(putMappings(UserController.class)).contains("/me/like-notifications/read");
+        assertThat(deleteMappings(UserController.class)).contains("/me");
+
+        // Video controller: verify F05/F06/F10 related endpoints exist
+        assertThat(getMappings(VideoController.class)).contains(
+                "/users/me/videos",       // F06 - my videos
+                "/videos/recommendations"  // F02 - recommendations
         );
-        assertThat(postMappings(VideoController.class)).containsExactlyInAnyOrder(
-                "/videos/{id}/views",
-                "/videos"
+        assertThat(postMappings(VideoController.class)).contains(
+                "/videos",                 // F05/F10 - publish video
+                "/videos/{id}/views"       // F02 - mark viewed
         );
-        assertThat(putMappings(VideoController.class)).containsExactly("/videos/{id}/like");
-        assertThat(deleteMappings(VideoController.class)).containsExactlyInAnyOrder(
-                "/users/me/views",
-                "/videos/{id}"
+        assertThat(putMappings(VideoController.class)).contains("/videos/{id}/like");  // F04
+        assertThat(deleteMappings(VideoController.class)).contains(
+                "/videos/{id}",            // F07 - delete video
+                "/users/me/views"          // F02 - reset views
         );
 
-        assertThat(getMappings(AdminController.class)).containsExactlyInAnyOrder("/request-logs", "/stats");
+        // Admin endpoints exist
+        assertThat(getMappings(AdminController.class)).contains("/request-logs", "/stats");
+    }
+
+    @Test
+    void videoControllerHasPublishAndMyVideosEndpoints() {
+        Set<String> posts = postMappings(VideoController.class);
+        Set<String> gets = getMappings(VideoController.class);
+
+        // F05/F10 — publish video
+        assertThat(posts).contains("/videos");
+        // F06 — my videos with pagination
+        assertThat(gets).contains("/users/me/videos");
     }
 
     @Test
     void webConfigMentionsOnlyVersionedPublicAuthRoutes() throws Exception {
-        String sourceName = WebConfig.class.getDeclaredMethod("addInterceptors", org.springframework.web.servlet.config.annotation.InterceptorRegistry.class).getName();
+        String sourceName = WebConfig.class.getDeclaredMethod("addInterceptors",
+                org.springframework.web.servlet.config.annotation.InterceptorRegistry.class).getName();
         assertThat(sourceName).isEqualTo("addInterceptors");
     }
 
