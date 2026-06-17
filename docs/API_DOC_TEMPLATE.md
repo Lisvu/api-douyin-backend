@@ -1098,3 +1098,417 @@ curl -X GET "http://165.232.172.99:8080/api/v1/admin/stats" \
 4. 分页支持：日志接口支持分页查询，避免一次返回过多数据
 5. 敏感信息脱敏：日志中的密码和 Token 已自动脱敏，不会泄露
 6. 100条为日志显示的最大显示
+
+---
+
+## 发布视频（F05 / F10）
+
+- 接口说明：当前登录用户上传视频文件（必填）、可选的封面图片，以及标题和描述信息，创建一条新的视频记录。上传成功后视频文件持久化存储，封面可自定义上传或由后端自动生成。发布成功后视频进入推荐池，可被其他用户观看和互动。
+- 请求方法：`POST`
+- 请求路径：`/api/v1/videos`
+- 是否需要登录：`是`
+- Content-Type：`multipart/form-data`
+
+### Path 参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| - | - | - | 无 |
+
+### Query 参数
+
+| 参数名 | 类型 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| - | - | - | - | 无 |
+
+### Body 参数（multipart/form-data）
+
+| 参数名 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `title` | `String` | 是 | 视频标题，不能为空 |
+| `description` | `String` | 否 | 视频描述，默认为空字符串 |
+| `video` | `File` | 是 | 视频文件（multipart），不能为空 |
+| `cover` | `File` | 否 | 封面图片（multipart）；未提供时后端自动生成渐变封面 |
+
+### 请求示例
+
+```bash
+# 上传视频 + 自定义封面
+curl -X POST "http://localhost:8080/api/v1/videos" \
+  -H "Authorization: Bearer <jwt-token>" \
+  -F "title=我的第一条短视频" \
+  -F "description=这是视频描述 #生活 #日常" \
+  -F "video=@/path/to/my_video.mp4" \
+  -F "cover=@/path/to/cover.jpg"
+
+# 仅上传视频（后端自动生成封面）
+curl -X POST "http://localhost:8080/api/v1/videos" \
+  -H "Authorization: Bearer <jwt-token>" \
+  -F "title=无封面视频" \
+  -F "video=@/path/to/my_video.mp4"
+```
+
+### 成功响应 `201 Created`
+
+```json
+{
+  "success": true,
+  "message": "Video published successfully!",
+  "data": {
+    "id": 15,
+    "user_id": 5,
+    "title": "我的第一条短视频",
+    "description": "这是视频描述 #生活 #日常",
+    "video_url": "/uploads/videos/video-1765960000000-123456789.mp4",
+    "cover_url": "/uploads/covers/cover-1765960000000-123456789.jpg",
+    "views_count": 0,
+    "comments_count": 0,
+    "status": "published",
+    "created_at": "2026-06-17T12:00:00",
+    "creator_name": "test_user",
+    "avatarUrl": "/uploads/avatars/default.png",
+    "liked": false,
+    "likeCount": 0,
+    "is_liked": 0,
+    "likes_count": 0,
+    "favorited": false,
+    "favoriteCount": 0,
+    "is_favorited": 0,
+    "favorites_count": 0
+  }
+}
+```
+
+### 失败响应
+
+`400 Bad Request - 缺少标题`
+
+```json
+{
+  "success": false,
+  "message": "Video title is required."
+}
+```
+
+`400 Bad Request - 缺少视频文件`
+
+```json
+{
+  "success": false,
+  "message": "Video file is required."
+}
+```
+
+`401 Unauthorized - 未登录`
+
+```json
+{
+  "success": false,
+  "message": "Access Denied: Missing or malformed Authorization header."
+}
+```
+
+`401 Unauthorized - 用户会话无效`
+
+```json
+{
+  "success": false,
+  "message": "User session invalid."
+}
+```
+
+`500 Internal Server Error - 文件存储失败`
+
+```json
+{
+  "success": false,
+  "message": "File upload failed: <detail>"
+}
+```
+
+### 响应字段说明
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `data.id` | `Long` | 新创建的视频 ID |
+| `data.user_id` | `Long` | 发布者用户 ID |
+| `data.title` | `String` | 视频标题 |
+| `data.description` | `String` | 视频描述 |
+| `data.video_url` | `String` | 视频文件访问 URL（本地相对路径或远程 CDN 绝对路径） |
+| `data.cover_url` | `String` | 封面图片访问 URL |
+| `data.views_count` | `Integer` | 观看次数 |
+| `data.comments_count` | `Long` | 评论总数 |
+| `data.status` | `String` | 视频状态，固定为 `"published"` |
+| `data.created_at` | `String` | 创建时间（ISO-8601） |
+| `data.creator_name` | `String` | 发布者用户名 |
+| `data.avatarUrl` | `String` | 发布者头像 URL |
+| `data.liked` | `Boolean` | 当前用户是否已点赞（新建视频为 `false`） |
+| `data.likeCount` | `Integer` | 点赞总数（新建视频为 `0`） |
+| `data.is_liked` | `0/1` | `liked` 的整型别名 |
+| `data.likes_count` | `Integer` | `likeCount` 的 snake_case 别名 |
+
+### 错误码说明
+
+| 状态码 | 说明 |
+| --- | --- |
+| `201` | 发布成功，视频已落库并可被推荐 |
+| `400` | 标题为空或视频文件缺失 |
+| `401` | 未登录、Token 无效或用户不存在 |
+| `500` | 文件存储失败（磁盘空间不足、远程 SFTP 不可达等） |
+
+---
+
+## 文件存储说明（F10）
+
+### 存储路径
+
+视频文件和封面文件统一存储在项目运行目录下的 `public/uploads/` 目录：
+
+```
+{项目根目录}/public/uploads/
+├── videos/
+│   ├── video-1765960000000-123456789.mp4
+│   └── video-1765960001234-987654321.mp4
+└── covers/
+    ├── cover-1765960000000-123456789.jpg
+    └── cover-1765960001234-987654321.jpg
+```
+
+- 配置项：`app.media.local-upload-dir`（默认值 `public/uploads`）
+- 可通过 `application.properties` 修改存储根目录
+
+### 文件命名规则
+
+| 文件类型 | 命名格式 | 示例 |
+| --- | --- | --- |
+| 视频文件 | `video-{timestamp}-{random}.{ext}` | `video-1765960000000-123456789.mp4` |
+| 自定义封面 | `cover-{timestamp}-{random}.{ext}` | `cover-1765960000000-123456789.jpg` |
+| 自动生成封面 | `cover-{timestamp}-{random}.jpg` | `cover-1765960000000-123456789.jpg` |
+
+- `{timestamp}`：`System.currentTimeMillis()`（毫秒级时间戳）
+- `{random}`：`Math.round(Math.random() * 1e9)`（0–10 亿随机整数）
+- `{ext}`：原始文件扩展名（小写），无扩展名时默认 `.mp4`（视频）或 `.jpg`（封面）
+
+### 文件访问 URL
+
+| 部署模式 | URL 格式 | 说明 |
+| --- | --- | --- |
+| 本地存储 | `/uploads/{folder}/{filename}` | 由 `UploadMediaController` 提供静态资源服务 |
+| 远程 SFTP | `{publicBaseUrl}/uploads/{folder}/{filename}` | 通过 SFTP 上传到远程服务器，由 CDN/网关对外提供访问 |
+
+- 本地模式下，视频通过 `GET /uploads/videos/{filename}` 访问
+- 远程模式下，需配置 `app.media.remote-upload.enabled=true` 及对应的 SFTP 连接参数
+
+### 封面自动生成
+
+当发布视频时未提供 `cover` 文件，后端自动生成封面：
+
+- 尺寸：600 × 800 像素
+- 背景：渐变色（深蓝绿 → 玫红）
+- 文字：视频标题（居中，最多显示 18 个字符）
+- 格式：JPEG
+
+### 静态资源访问
+
+`UploadMediaController` 映射 `/uploads/**` 路径，将请求路径解析到本地 `public/uploads/` 对应文件：
+
+```bash
+# 访问本地存储的视频文件
+curl -X GET "http://localhost:8080/uploads/videos/video-1765960000000-123456789.mp4"
+
+# 访问本地存储的封面文件
+curl -X GET "http://localhost:8080/uploads/covers/cover-1765960000000-123456789.jpg"
+```
+
+响应头包含 `Cache-Control: public, max-age=3600`，允许浏览器缓存 1 小时。
+
+### 文件删除
+
+删除视频时会同步清理对应的本地文件和远程文件（SFTP），删除操作为 best-effort：即使文件删除失败，数据库记录也会正常清除，不会回滚事务。
+
+---
+
+## 查看我的视频（F06）
+
+- 接口说明：分页查询当前登录用户发布的视频列表，按创建时间倒序排列。每条视频包含点赞状态、收藏状态、评论数等完整字段，与推荐流视频项字段一致。
+- 请求方法：`GET`
+- 请求路径：`/api/v1/users/me/videos`
+- 是否需要登录：`是`
+
+### Path 参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| - | - | - | 无 |
+
+### Query 参数
+
+| 参数名 | 类型 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `cursor` | `String` | 否 | - | 上一页返回的 `pagination.nextCursor`，首次请求不传 |
+| `limit` | `Integer` | 否 | `8` | 每页条数，范围 1–50 |
+
+### Body 参数
+
+无。
+
+### 请求示例
+
+```bash
+# 首次请求（第一页）
+curl -X GET "http://localhost:8080/api/v1/users/me/videos?limit=8" \
+  -H "Authorization: Bearer <jwt-token>"
+
+# 加载下一页
+curl -X GET "http://localhost:8080/api/v1/users/me/videos?cursor=MjAyNi0wNi0xN1QxMjowMDowMHwxNQ&limit=8" \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+### 成功响应 `200 OK`
+
+```json
+{
+  "success": true,
+  "videos": [
+    {
+      "id": 15,
+      "user_id": 5,
+      "title": "我的第一条短视频",
+      "description": "这是视频描述 #生活 #日常",
+      "video_url": "/uploads/videos/video-1765960000000-123456789.mp4",
+      "cover_url": "/uploads/covers/cover-1765960000000-123456789.jpg",
+      "views_count": 0,
+      "comments_count": 3,
+      "status": "published",
+      "created_at": "2026-06-17T12:00:00",
+      "creator_name": "test_user",
+      "avatarUrl": "/uploads/avatars/default.png",
+      "liked": false,
+      "likeCount": 5,
+      "is_liked": 0,
+      "likes_count": 5,
+      "favorited": true,
+      "favoriteCount": 2,
+      "is_favorited": 1,
+      "favorites_count": 2
+    },
+    {
+      "id": 12,
+      "user_id": 5,
+      "title": "另一条视频",
+      "description": "",
+      "video_url": "/uploads/videos/video-1765950000000-987654321.mp4",
+      "cover_url": "/uploads/covers/cover-1765950000000-987654321.jpg",
+      "views_count": 0,
+      "comments_count": 1,
+      "status": "published",
+      "created_at": "2026-06-16T10:00:00",
+      "creator_name": "test_user",
+      "avatarUrl": "/uploads/avatars/default.png",
+      "liked": true,
+      "likeCount": 12,
+      "is_liked": 1,
+      "likes_count": 12,
+      "favorited": false,
+      "favoriteCount": 0,
+      "is_favorited": 0,
+      "favorites_count": 0
+    }
+  ],
+  "pagination": {
+    "limit": 8,
+    "hasMore": false,
+    "nextCursor": null
+  }
+}
+```
+
+### 空列表 `200 OK`
+
+```json
+{
+  "success": true,
+  "videos": [],
+  "pagination": {
+    "limit": 8,
+    "hasMore": false,
+    "nextCursor": null
+  }
+}
+```
+
+### 失败响应
+
+`401 Unauthorized`
+
+```json
+{
+  "success": false,
+  "message": "Access Denied: Missing or malformed Authorization header."
+}
+```
+
+`500 Internal Server Error`
+
+```json
+{
+  "success": false,
+  "message": "Error loading your videos: <detail>"
+}
+```
+
+### 响应字段说明
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `videos` | `Array` | 当前用户发布的视频列表，按创建时间倒序；可为空数组 |
+| `videos[].id` | `Long` | 视频 ID |
+| `videos[].user_id` | `Long` | 发布者用户 ID（始终等于当前用户） |
+| `videos[].title` | `String` | 视频标题 |
+| `videos[].description` | `String` | 视频描述 |
+| `videos[].video_url` | `String` | 视频播放 URL |
+| `videos[].cover_url` | `String` | 封面图片 URL |
+| `videos[].views_count` | `Integer` | 观看次数 |
+| `videos[].comments_count` | `Long` | 评论总数 |
+| `videos[].status` | `String` | 视频状态，固定为 `"published"` |
+| `videos[].created_at` | `String` | 创建时间（ISO-8601） |
+| `videos[].creator_name` | `String` | 发布者用户名 |
+| `videos[].avatarUrl` | `String` | 发布者头像 URL |
+| `videos[].liked` | `Boolean` | 当前用户是否已点赞 |
+| `videos[].likeCount` | `Integer` | 点赞总数 |
+| `videos[].is_liked` | `0/1` | `liked` 的整型别名 |
+| `videos[].likes_count` | `Integer` | `likeCount` 的 snake_case 别名 |
+| `videos[].favorited` | `Boolean` | 当前用户是否已收藏 |
+| `videos[].favoriteCount` | `Long` | 收藏总数 |
+| `videos[].is_favorited` | `0/1` | `favorited` 的整型别名 |
+| `videos[].favorites_count` | `Long` | `favoriteCount` 的 snake_case 别名 |
+| `pagination.limit` | `Integer` | 本次请求的每页条数 |
+| `pagination.hasMore` | `Boolean` | 是否还有更多数据 |
+| `pagination.nextCursor` | `String/null` | 下一页游标；`null` 表示已到最后一页 |
+
+### 错误码说明
+
+| 状态码 | 说明 |
+| --- | --- |
+| `200` | 查询成功；无视频时返回空数组 `videos: []` |
+| `401` | 未登录、Token 缺失/格式错误、Token 无效或过期 |
+| `500` | 服务端查询异常 |
+
+### 分页机制
+
+- 采用 **cursor 游标分页**（非传统页码分页），避免深分页性能问题。
+- 首次请求不传 `cursor`；后续请求传入上一页响应中的 `pagination.nextCursor`。
+- 游标编码规则：Base64URL(`created_at|videoId`)，前端无需解析，原样传递即可。
+- `limit` 默认 8，最大 50，超出范围自动修正。
+
+### 缓存策略
+
+- 接口使用 Spring Cache `@Cacheable`，缓存 key 基于 `userId + cursor + limit`。
+- 发布新视频或删除视频时，通过 `@CacheEvict(value = "userVideos", allEntries = true)` 清除当前用户全部缓存。
+
+### 业务规则
+
+- 仅返回当前登录用户自己发布的视频，无法查看他人发布的视频列表。
+- 视频列表不包含文件已损坏或不可播放的视频（`LocalMediaAvailability.isPlayableUrl` 过滤）。
+- 每条视频的 `liked`、`favorited` 等状态基于当前登录用户计算。
+- 视频项字段与推荐流（F02）一致，前端可复用同一视频卡片组件。

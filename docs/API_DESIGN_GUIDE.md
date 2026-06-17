@@ -129,8 +129,8 @@ GET /api/v1/admin/stats
 | 查看用户点赞的视频（F16） | `GET` | `/api/v1/users/{id}/liked-videos?cursor=&limit=8` | 是 |
 | 查看点赞通知（F14） | `GET` | `/api/v1/users/me/like-notifications?page=1&limit=10` | 是 |
 | 标记点赞通知已读（F14） | `PUT` | `/api/v1/users/me/like-notifications/read` | 是 |
-| 发布视频 | `POST` | `/api/v1/videos` | 是 |
-| 查看我的视频 | `GET` | `/api/v1/users/me/videos?page=1&limit=6` | 是 |
+| 发布视频（F05 / F10） | `POST` | `/api/v1/videos` | 是 |
+| 查看我的视频（F06） | `GET` | `/api/v1/users/me/videos?cursor=&limit=8` | 是 |
 | 删除我的视频 | `DELETE` | `/api/v1/videos/{id}` | 是 |
 | 查看请求日志 | `GET` | `/api/v1/admin/request-logs` | 是 |
 | 查看系统统计 | `GET` | `/api/v1/admin/stats` | 是 |
