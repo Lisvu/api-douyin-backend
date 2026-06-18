@@ -11,6 +11,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -22,6 +23,7 @@ import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -40,6 +42,7 @@ class AdminControllerTest {
     @Mock private CommentRepository commentRepository;
     @Mock private UserRelationRepository userRelationRepository;
     @Mock private RequestLogRepository requestLogRepository;
+    @Mock private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void setUp() {
@@ -53,7 +56,7 @@ class AdminControllerTest {
         AdminController controller = new AdminController(
                 userRepository, videoRepository, likeRepository, viewRepository,
                 favoriteRepository, commentRepository, userRelationRepository,
-                requestLogRepository, noOpCache
+                requestLogRepository, noOpCache, jdbcTemplate
         );
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
@@ -204,6 +207,28 @@ class AdminControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.limit").value(20))
                 .andExpect(jsonPath("$.hasMore").value(false));
+    }
+
+    // ── /database 接口 ─────────────────────────────────────────────
+
+    @Test
+    void databaseTablesRequiresAdminRole() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/database/tables").requestAttr("role", "USER"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false));
+    }
+
+    @Test
+    void databaseTablesReturnsPublicTables() throws Exception {
+        when(jdbcTemplate.queryForList(anyString()))
+                .thenReturn(List.of(Map.of("table_name", "users")));
+        when(jdbcTemplate.queryForObject(eq("SELECT COUNT(*) FROM \"users\""), eq(Long.class)))
+                .thenReturn(3L);
+
+        mockMvc.perform(get("/api/v1/admin/database/tables").requestAttr("role", "ADMIN"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tables[0].name").value("users"))
+                .andExpect(jsonPath("$.tables[0].rowCount").value(3));
     }
 
     // ── 工具方法 ───────────────────────────────────────────────────

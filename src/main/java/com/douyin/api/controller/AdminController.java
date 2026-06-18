@@ -15,6 +15,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -39,6 +40,7 @@ public class AdminController {
     private final UserRelationRepository userRelationRepository;
     private final RequestLogRepository requestLogRepository;
     private final RedisCacheService redisCacheService;
+    private final JdbcTemplate jdbcTemplate;
     private static final Duration STATS_TTL = Duration.ofMinutes(1);
     private static final Duration LOGS_TTL = Duration.ofSeconds(30);
 
@@ -50,7 +52,8 @@ public class AdminController {
                            CommentRepository commentRepository,
                            UserRelationRepository userRelationRepository,
                            RequestLogRepository requestLogRepository,
-                           RedisCacheService redisCacheService) {
+                           RedisCacheService redisCacheService,
+                           JdbcTemplate jdbcTemplate) {
         this.userRepository = userRepository;
         this.videoRepository = videoRepository;
         this.likeRepository = likeRepository;
@@ -60,6 +63,7 @@ public class AdminController {
         this.userRelationRepository = userRelationRepository;
         this.requestLogRepository = requestLogRepository;
         this.redisCacheService = redisCacheService;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     // 从数据库查询日志（支持分页和限制）
@@ -146,6 +150,109 @@ public class AdminController {
     }
 
     private record CursorParts(LocalDateTime createdAt, Long id) {}
+
+    @GetMapping("/database/tables")
+    public ResponseEntity<Map<String, Object>> getDatabaseTables(HttpServletRequest request) {
+        if (!"ADMIN".equals(request.getAttribute("role"))) {
+            return ResponseEntity.status(403)
+                    .body(Map.of("success", false, "message", "Forbidden"));
+        }
+
+        List<Map<String, Object>> tables = jdbcTemplate.queryForList("""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_type = 'BASE TABLE'
+                ORDER BY table_name
+                """);
+
+        List<Map<String, Object>> formattedTables = new ArrayList<>();
+        for (Map<String, Object> table : tables) {
+            String tableName = Objects.toString(table.get("table_name"), "");
+            if (tableName.isBlank()) {
+                continue;
+            }
+            Long rowCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + quoteIdentifier(tableName), Long.class);
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("name", tableName);
+            item.put("rowCount", rowCount == null ? 0 : rowCount);
+            formattedTables.add(item);
+        }
+
+        return ResponseEntity.ok(Map.of("success", true, "tables", formattedTables));
+    }
+
+    @GetMapping("/database/tables/{tableName}")
+    public ResponseEntity<Map<String, Object>> getDatabaseTableData(
+            @PathVariable String tableName,
+            @RequestParam(value = "limit", defaultValue = "50") int limit,
+            @RequestParam(value = "offset", defaultValue = "0") int offset,
+            HttpServletRequest request) {
+        if (!"ADMIN".equals(request.getAttribute("role"))) {
+            return ResponseEntity.status(403)
+                    .body(Map.of("success", false, "message", "Forbidden"));
+        }
+
+        if (!isAllowedPublicTable(tableName)) {
+            return ResponseEntity.status(404)
+                    .body(Map.of("success", false, "message", "Table not found"));
+        }
+
+        int safeLimit = Math.min(200, Math.max(1, limit));
+        int safeOffset = Math.max(0, offset);
+        String quotedTable = quoteIdentifier(tableName);
+
+        List<Map<String, Object>> columns = jdbcTemplate.queryForList("""
+                SELECT column_name, data_type, is_nullable, column_default
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = ?
+                ORDER BY ordinal_position
+                """, tableName);
+
+        Long totalRows = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + quotedTable, Long.class);
+        String orderBy = columns.stream()
+                .anyMatch(column -> "id".equals(Objects.toString(column.get("column_name"), "")))
+                ? " ORDER BY \"id\" DESC"
+                : "";
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT * FROM " + quotedTable + orderBy + " LIMIT ? OFFSET ?",
+                safeLimit,
+                safeOffset
+        );
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("success", true);
+        response.put("table", tableName);
+        response.put("columns", columns);
+        response.put("rows", rows);
+        response.put("limit", safeLimit);
+        response.put("offset", safeOffset);
+        response.put("totalRows", totalRows == null ? 0 : totalRows);
+        response.put("hasMore", safeOffset + safeLimit < (totalRows == null ? 0 : totalRows));
+        return ResponseEntity.ok(response);
+    }
+
+    private boolean isAllowedPublicTable(String tableName) {
+        if (tableName == null || !tableName.matches("[A-Za-z0-9_]+")) {
+            return false;
+        }
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_type = 'BASE TABLE'
+                  AND table_name = ?
+                """, Integer.class, tableName);
+        return count != null && count > 0;
+    }
+
+    private String quoteIdentifier(String identifier) {
+        if (identifier == null || !identifier.matches("[A-Za-z0-9_]+")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid identifier");
+        }
+        return "\"" + identifier.replace("\"", "\"\"") + "\"";
+    }
 
     @PostMapping("/public-sample-owner-distributions")
     @Transactional
