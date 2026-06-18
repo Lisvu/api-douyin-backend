@@ -6,6 +6,7 @@ public interface CommentItemProjection {
     Long getId();
     Long getVideoId();
     Long getUserId();
+    Long getParentId();
     String getUsername();
     String getDisplayName();
     String getAvatarUrl();

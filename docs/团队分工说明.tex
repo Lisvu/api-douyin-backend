@@ -1,0 +1,155 @@
+\documentclass[UTF8,a4paper,12pt,fontset=fandol]{ctexart}
+\usepackage{fontspec}
+\setmainfont{Times New Roman}
+\setCJKmainfont[
+    Path=/System/Library/AssetsV2/com_apple_MobileAsset_Font8/88d6cc32a907955efa1d014207889413890573be.asset/AssetData/,
+    UprightFont=*,
+    BoldFont=*,
+    ItalicFont=*,
+    BoldItalicFont=*,
+    FontIndex=0
+]{Kaiti.ttc}
+\usepackage{geometry}
+\usepackage{fancyhdr}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{hyperref}
+
+\geometry{left=2.1cm, right=2.1cm, top=2.25cm, bottom=2.25cm}
+\linespread{1.22}
+\setlength{\headheight}{15pt}
+\setlength{\parskip}{0.32em}
+\setlength{\parindent}{2em}
+\sloppy
+\emergencystretch=2em
+
+\hypersetup{colorlinks=true, linkcolor=black, urlcolor=blue!55!black, citecolor=black, pdfborder={0 0 0}}
+\setlist[itemize]{leftmargin=2em, itemsep=0.2em, topsep=0.25em}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{API 课程期末作业}
+\rhead{团队分工文档}
+\cfoot{\thepage}
+
+\title{\textbf{团队分工文档（工作分工与工作量占比）}}
+\author{API 课程期末作业小组}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\section{说明}
+本分工文档根据《项目工作进度计划.xlsx》中的“计划工作内容”整理，按成员实际承担的开发任务展开。文档重点说明每个人在三周开发周期中具体做了什么，并给出基于实际完成内容、实现难度和交付完整度评定的工作量占比。
+
+\section{分工总览}
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{1.8cm} p{3.2cm} p{1.9cm} X}
+\toprule
+成员 & 负责方向 & 工作量占比 & 总体工作内容 \\
+\midrule
+陈茹 & 项目基础、认证鉴权、部署集成 & 21.0\% & 搭建数据库和鉴权基础，完善登录注册注销、首页基础播放、弹幕、用户资料修改、消息通知、游标分页、Redis、AI 文案生成、朋友聊天和服务器部署。 \\
+蔡能恩 & 推荐流、观看去重、视频切换及扩展播放体验 & 20.0\% & 完成推荐流接口字段、推荐排序、观看记录去重、上下切换、推荐流联调，并补充稍后再看、弹幕、下载、多视频视图和分类等扩展功能。 \\
+张蕴淇 & 点赞、通知、评论、主页 & 19.5\% & 完成点赞/取消点赞、点赞状态回显、点赞通知分页、评论查询发表、点击头像进入主页、主页视频展示和异常场景测试。 \\
+李好 & 视频发布、文件存储、我的视频、部署联调 & 20.0\% & 完成上传发布、视频落库、我的视频分页、视频访问 URL、喜欢/收藏、转发给好友、媒体存储、GitHub Actions 自动部署和批量操作等工作。 \\
+王婷 & 删除权限、日志监控、搜索、关注好友 & 19.5\% & 完成删除权限校验、请求日志、接口耗时统计、后台监控页面、关注/取消关注、关注列表、粉丝列表、朋友列表、关系查询和搜索功能。 \\
+\bottomrule
+\end{tabularx}
+\normalsize
+\end{table}
+
+\section{成员具体分工}
+\subsection{陈茹}
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{1.7cm} X}
+\toprule
+阶段 & 计划工作内容与实际职责 \\
+\midrule
+第1周 & 完成数据库初始化与基础建表，设计用户表、视频表、点赞记录表、观看历史表；搭建注册、登录、注销、JWT、全局鉴权基础；提供共享 API 文档模板。 \\
+第2周 & 完善注册、登录、注销、Token 登录态、当前用户上下文和异常处理；完成首页视频播放基础组件；根据各成员需求调整表结构；实现弹幕显示、播放进度条、倍速、修改用户头像和主页背景、消息通知模块与游标分页。 \\
+第3周 & 完成部署配置和最终集成冒烟测试；汇总项目说明、分工文档、数据库说明、共享 API 文档和提交材料；补充 Redis 部署、朋友转发视频/聊天、AI 辅助视频文案生成、AI 辅助视频分类与视频封面推荐，并将前后端部署到服务器，完成 Nginx 部署与对外访问入口配置。 \\
+\bottomrule
+\end{tabularx}
+\normalsize
+\end{table}
+
+\subsection{蔡能恩}
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{1.7cm} X}
+\toprule
+阶段 & 计划工作内容与实际职责 \\
+\midrule
+第1周 & 梳理推荐流接口字段，实现推荐流页面基础结构；设计观看记录与去重逻辑；确定视频切换交互方式；填写推荐流与视频切换接口草稿。 \\
+第2周 & 实现按点赞数倒序推荐、观看记录写入和去重、上滑/下滑切换逻辑，并接入首页播放组件，完成推荐流前后端联调。 \\
+第3周 & 修复推荐流和切换联调问题，补充测试截图和异常场景说明；完善共享 API 文档；补充稍后再看、弹幕、视频下载、多视频视图和分类等扩展功能。 \\
+\bottomrule
+\end{tabularx}
+\normalsize
+\end{table}
+
+\subsection{张蕴淇}
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{1.7cm} X}
+\toprule
+阶段 & 计划工作内容与实际职责 \\
+\midrule
+第1周 & 设计点赞/取消点赞接口字段；实现点赞通知列表分页和未读数量；实现点赞按钮基础交互；约定 liked、likeCount 字段；设计评论查询/发表接口；设计主页功能和样式。 \\
+第2周 & 实现点赞/取消点赞接口、点赞状态回显和重复点赞处理；接入推荐流点赞展示；实现点赞通知时间戳接口、评论查询/发表接口、点击头像进入主页、主页展示头像、用户 ID、获赞数和作品数。 \\
+第3周 & 修复点赞联调问题，补充点赞、点赞通知、评论、主页显示异常场景测试说明和截图；完善共享 API 文档，保证点赞通知列表、评论和主页功能可演示。 \\
+\bottomrule
+\end{tabularx}
+\normalsize
+\end{table}
+
+\subsection{李好}
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{1.7cm} X}
+\toprule
+阶段 & 计划工作内容与实际职责 \\
+\midrule
+第1周 & 设计视频发布表单；确定视频文件存储路径和访问 URL 规则；设计我的视频分页接口参数。 \\
+第2周 & 实现视频上传与发布、视频信息落库、我的视频分页列表和“我的视频”卡片跳转播放；生成视频访问 URL；增加查看我的喜欢和视频转发给好友相关前端。 \\
+第3周 & 修复上传、存储和我的视频分页联调问题；配置共享服务器部署和 GitHub Actions 自动部署；完成集中化媒体存储、SFTP 远程同步视频和封面、测试截图与存储说明；新增我的作品批量操作，并修复评论不实时刷新的问题。 \\
+\bottomrule
+\end{tabularx}
+\normalsize
+\end{table}
+
+\subsection{王婷}
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{1.7cm} X}
+\toprule
+阶段 & 计划工作内容与实际职责 \\
+\midrule
+第1周 & 设计删除视频权限校验流程；设计请求日志与耗时统计字段；准备后台日志和统计页面结构。 \\
+第2周 & 实现删除我的视频接口和权限校验；实现请求日志记录、接口耗时统计和后台日志/统计页面接入。 \\
+第3周 & 修复删除权限和日志监控联调问题；整理验收截图、日志样例、耗时样例和异常样例；实现关注/取消关注、关注列表、粉丝列表、朋友列表、关系查询接口；实现视频与用户搜索接口，并完成前端关注 Tab、朋友 Tab 和搜索页联调。 \\
+\bottomrule
+\end{tabularx}
+\normalsize
+\end{table}
+
+\section{工作量占比说明}
+工作量占比依据计划任务覆盖度、实际完成度、实现复杂度和交付完整度综合评定。公共基础、部署集成、推荐流、上传存储、互动通知、日志监控、关注搜索等内容均按是否落地、是否可演示、是否需要跨模块联调进行衡量。最终占比合计为 100\%。
+
+\section{总结}
+从计划工作内容看，陈茹承担了项目底座、集成和部署类工作；蔡能恩负责推荐流主入口；张蕴淇负责互动链路和主页；李好负责媒体发布、存储和部署联调；王婷负责权限、监控、关注好友与搜索。各成员任务均覆盖前端、后端、接口联调和自测材料，最终以可运行、可演示、可说明为交付标准。
+
+\end{document}

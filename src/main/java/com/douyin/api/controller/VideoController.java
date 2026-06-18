@@ -583,17 +583,29 @@ public class VideoController {
                 ? rawComments.subList(0, safeLimit)
                 : rawComments;
 
+        List<Long> parentIds = pageComments.stream().map(CommentItemProjection::getId).toList();
+        Map<Long, List<Map<String, Object>>> repliesByParentId = new HashMap<>();
+        if (!parentIds.isEmpty()) {
+            Set<Long> rootIdSet = new HashSet<>(parentIds);
+            List<CommentItemProjection> replies = commentRepository.findRepliesByRootParentIds(parentIds);
+            Map<Long, Long> replyRootIds = new HashMap<>();
+            for (CommentItemProjection reply : replies) {
+                if (rootIdSet.contains(reply.getParentId())) {
+                    replyRootIds.put(reply.getId(), reply.getParentId());
+                }
+            }
+            for (CommentItemProjection reply : replies) {
+                Long rootParentId = replyRootIds.getOrDefault(reply.getParentId(), reply.getParentId());
+                repliesByParentId
+                        .computeIfAbsent(rootParentId, ignored -> new ArrayList<>())
+                        .add(commentProjectionToMap(reply));
+            }
+        }
+
         List<Map<String, Object>> comments = new ArrayList<>();
         for (CommentItemProjection item : pageComments) {
-            Map<String, Object> comment = new HashMap<>();
-            comment.put("id", item.getId());
-            comment.put("videoId", item.getVideoId());
-            comment.put("userId", item.getUserId());
-            comment.put("username", item.getUsername());
-            comment.put("displayName", item.getDisplayName());
-            comment.put("avatarUrl", item.getAvatarUrl());
-            comment.put("content", item.getContent());
-            comment.put("createdAt", item.getCreatedAt());
+            Map<String, Object> comment = commentProjectionToMap(item);
+            comment.put("replies", repliesByParentId.getOrDefault(item.getId(), List.of()));
             comments.add(comment);
         }
 
@@ -646,9 +658,21 @@ public class VideoController {
             return ResponseEntity.badRequest().body(response);
         }
 
+        Long parentId = parseOptionalLong(body == null ? null : body.get("parentId"));
+        Comment parentComment = null;
+        if (parentId != null) {
+            parentComment = commentRepository.findById(parentId).orElse(null);
+            if (parentComment == null || !Objects.equals(parentComment.getVideoId(), videoId)) {
+                response.put("success", false);
+                response.put("message", "Parent comment not found.");
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            }
+        }
+
         Comment comment = new Comment();
         comment.setVideoId(videoId);
         comment.setUserId(userId);
+        comment.setParentId(parentComment == null ? null : parentComment.getId());
         comment.setContent(content);
         commentRepository.save(comment);
         redisCacheService.evictPrefix("recommendations:");
@@ -658,6 +682,7 @@ public class VideoController {
         commentData.put("id", comment.getId());
         commentData.put("videoId", comment.getVideoId());
         commentData.put("userId", comment.getUserId());
+        commentData.put("parentId", comment.getParentId());
         commentData.put("username", author != null ? author.getUsername() : "");
         commentData.put("displayName", author != null ? author.getDisplayName() : "");
         commentData.put("avatarUrl", author != null ? author.getAvatarUrl() : null);
@@ -1377,5 +1402,37 @@ public class VideoController {
             counts.put((Long) row[0], (Long) row[1]);
         }
         return counts;
+    }
+
+    private Map<String, Object> commentProjectionToMap(CommentItemProjection item) {
+        Map<String, Object> comment = new HashMap<>();
+        comment.put("id", item.getId());
+        comment.put("videoId", item.getVideoId());
+        comment.put("userId", item.getUserId());
+        comment.put("parentId", item.getParentId());
+        comment.put("username", item.getUsername());
+        comment.put("displayName", item.getDisplayName());
+        comment.put("avatarUrl", item.getAvatarUrl());
+        comment.put("content", item.getContent());
+        comment.put("createdAt", item.getCreatedAt());
+        return comment;
+    }
+
+    private Long parseOptionalLong(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        String text = value.toString().trim();
+        if (text.isEmpty()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(text);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 }

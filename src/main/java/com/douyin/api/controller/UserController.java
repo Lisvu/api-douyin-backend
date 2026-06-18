@@ -163,7 +163,7 @@ public class UserController {
             allNotifications.add(un);
         }
 
-        // 3. Fetch Comments
+        // 3. Fetch Comments on my videos
         List<Object[]> comments = cursorParts == null
                 ? commentRepository.findReceivedCommentNotificationsCursor(ownerId, pageable)
                 : commentRepository.findReceivedCommentNotificationsBeforeCursor(ownerId, cursorParts.createdAt(), cursorParts.id(), pageable);
@@ -179,6 +179,27 @@ public class UserController {
             un.videoTitle = (String) c[6];
             un.content = (String) c[7];
             un.createdAt = (LocalDateTime) c[8];
+            allNotifications.add(un);
+        }
+
+        // 4. Fetch Replies to my comments
+        List<Object[]> replies = cursorParts == null
+                ? commentRepository.findReceivedReplyNotificationsCursor(ownerId, pageable)
+                : commentRepository.findReceivedReplyNotificationsBeforeCursor(ownerId, cursorParts.createdAt(), cursorParts.id(), pageable);
+        for (Object[] r : replies) {
+            UnifiedNotification un = new UnifiedNotification();
+            un.uniqueKey = "R-" + r[0];
+            un.type = "reply";
+            un.actionId = (Long) r[0];
+            un.username = (String) r[2];
+            un.displayName = (String) r[3];
+            un.avatarUrl = (String) r[4];
+            un.videoId = (Long) r[5];
+            un.videoTitle = (String) r[6];
+            un.content = (String) r[7];
+            un.createdAt = (LocalDateTime) r[8];
+            un.parentCommentId = (Long) r[9];
+            un.parentContent = (String) r[10];
             allNotifications.add(un);
         }
 
@@ -208,6 +229,9 @@ public class UserController {
             notification.put("videoTitle", item.videoTitle);
             notification.put("likedAt", item.createdAt);
             notification.put("content", item.content);
+            notification.put("commentId", item.actionId);
+            notification.put("parentCommentId", item.parentCommentId);
+            notification.put("parentContent", item.parentContent);
             notification.put("read", isNotificationRead(item.createdAt, readAfter));
             notifications.add(notification);
         }
@@ -221,7 +245,10 @@ public class UserController {
         long unreadComments = readAfter == null
                 ? commentRepository.countReceivedComments(ownerId)
                 : commentRepository.countReceivedCommentsAfter(ownerId, readAfter);
-        long unreadCount = unreadLikes + unreadFavorites + unreadComments;
+        long unreadReplies = readAfter == null
+                ? commentRepository.countReceivedReplies(ownerId)
+                : commentRepository.countReceivedRepliesAfter(ownerId, readAfter);
+        long unreadCount = unreadLikes + unreadFavorites + unreadComments + unreadReplies;
 
         Map<String, Object> pagination = new HashMap<>();
         pagination.put("limit", safeLimit);
@@ -845,5 +872,7 @@ public class UserController {
         String videoTitle;
         LocalDateTime createdAt;
         String content;
+        Long parentCommentId;
+        String parentContent;
     }
 }

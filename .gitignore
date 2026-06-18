@@ -52,3 +52,8 @@ application-dev.properties
 tmp/
 temp/
 *.tmp
+
+# Technology Design Document Build Output
+docs/技术设计文档/
+docs/需求文档/
+

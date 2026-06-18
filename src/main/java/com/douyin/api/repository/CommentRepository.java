@@ -36,6 +36,7 @@ public interface CommentRepository extends JpaRepository<Comment, Long> {
             SELECT c.id AS id,
                    c.videoId AS videoId,
                    c.userId AS userId,
+                   c.parentId AS parentId,
                    u.username AS username,
                    u.displayName AS displayName,
                    u.avatarUrl AS avatarUrl,
@@ -53,6 +54,7 @@ public interface CommentRepository extends JpaRepository<Comment, Long> {
             SELECT c.id AS id,
                    c.videoId AS videoId,
                    c.userId AS userId,
+                   c.parentId AS parentId,
                    u.username AS username,
                    u.displayName AS displayName,
                    u.avatarUrl AS avatarUrl,
@@ -70,6 +72,41 @@ public interface CommentRepository extends JpaRepository<Comment, Long> {
             @Param("cursorCreatedAt") LocalDateTime cursorCreatedAt,
             @Param("cursorId") Long cursorId,
             Pageable pageable);
+
+    @Query("""
+            SELECT c.id AS id,
+                   c.videoId AS videoId,
+                   c.userId AS userId,
+                   c.parentId AS parentId,
+                   u.username AS username,
+                   u.displayName AS displayName,
+                   u.avatarUrl AS avatarUrl,
+                   c.content AS content,
+                   c.createdAt AS createdAt
+            FROM Comment c, User u
+            WHERE c.userId = u.id
+              AND c.parentId IN :parentIds
+            ORDER BY c.createdAt ASC, c.id ASC
+            """)
+    List<CommentItemProjection> findRepliesByParentIds(@Param("parentIds") Collection<Long> parentIds);
+
+    @Query("""
+            SELECT c.id AS id,
+                   c.videoId AS videoId,
+                   c.userId AS userId,
+                   c.parentId AS parentId,
+                   u.username AS username,
+                   u.displayName AS displayName,
+                   u.avatarUrl AS avatarUrl,
+                   c.content AS content,
+                   c.createdAt AS createdAt
+            FROM Comment c, User u, Comment directParent
+            WHERE c.userId = u.id
+              AND c.parentId = directParent.id
+              AND (c.parentId IN :parentIds OR directParent.parentId IN :parentIds)
+            ORDER BY c.createdAt ASC, c.id ASC
+            """)
+    List<CommentItemProjection> findRepliesByRootParentIds(@Param("parentIds") Collection<Long> parentIds);
 
     @Query("""
             SELECT c.id AS commentId,
@@ -117,6 +154,57 @@ public interface CommentRepository extends JpaRepository<Comment, Long> {
             Pageable pageable);
 
     @Query("""
+            SELECT c.id AS replyId,
+                   c.userId AS replierUserId,
+                   u.username AS replierUsername,
+                   u.displayName AS replierDisplayName,
+                   u.avatarUrl AS replierAvatarUrl,
+                   c.videoId AS videoId,
+                   v.title AS videoTitle,
+                   c.content AS replyContent,
+                   c.createdAt AS repliedAt,
+                   parent.id AS parentCommentId,
+                   parent.content AS parentContent
+            FROM Comment c, Comment parent, User u, Video v
+            WHERE c.userId = u.id
+              AND c.parentId = parent.id
+              AND c.videoId = v.id
+              AND parent.userId = :ownerId
+              AND c.userId <> :ownerId
+            ORDER BY c.createdAt DESC, c.id DESC
+            """)
+    List<Object[]> findReceivedReplyNotificationsCursor(
+            @Param("ownerId") Long ownerId,
+            Pageable pageable);
+
+    @Query("""
+            SELECT c.id AS replyId,
+                   c.userId AS replierUserId,
+                   u.username AS replierUsername,
+                   u.displayName AS replierDisplayName,
+                   u.avatarUrl AS replierAvatarUrl,
+                   c.videoId AS videoId,
+                   v.title AS videoTitle,
+                   c.content AS replyContent,
+                   c.createdAt AS repliedAt,
+                   parent.id AS parentCommentId,
+                   parent.content AS parentContent
+            FROM Comment c, Comment parent, User u, Video v
+            WHERE c.userId = u.id
+              AND c.parentId = parent.id
+              AND c.videoId = v.id
+              AND parent.userId = :ownerId
+              AND c.userId <> :ownerId
+              AND (c.createdAt < :cursorCreatedAt OR (c.createdAt = :cursorCreatedAt AND c.id < :cursorId))
+            ORDER BY c.createdAt DESC, c.id DESC
+            """)
+    List<Object[]> findReceivedReplyNotificationsBeforeCursor(
+            @Param("ownerId") Long ownerId,
+            @Param("cursorCreatedAt") LocalDateTime cursorCreatedAt,
+            @Param("cursorId") Long cursorId,
+            Pageable pageable);
+
+    @Query("""
             SELECT COUNT(c)
             FROM Comment c, Video v
             WHERE c.videoId = v.id
@@ -134,4 +222,23 @@ public interface CommentRepository extends JpaRepository<Comment, Long> {
               AND c.createdAt > :readAfter
             """)
     long countReceivedCommentsAfter(@Param("ownerId") Long ownerId, @Param("readAfter") LocalDateTime readAfter);
+
+    @Query("""
+            SELECT COUNT(c)
+            FROM Comment c, Comment parent
+            WHERE c.parentId = parent.id
+              AND parent.userId = :ownerId
+              AND c.userId <> :ownerId
+            """)
+    long countReceivedReplies(@Param("ownerId") Long ownerId);
+
+    @Query("""
+            SELECT COUNT(c)
+            FROM Comment c, Comment parent
+            WHERE c.parentId = parent.id
+              AND parent.userId = :ownerId
+              AND c.userId <> :ownerId
+              AND c.createdAt > :readAfter
+            """)
+    long countReceivedRepliesAfter(@Param("ownerId") Long ownerId, @Param("readAfter") LocalDateTime readAfter);
 }

@@ -1,0 +1,10 @@
+\contentsline {section}{\numberline {1}说明}{2}{section.1}%
+\contentsline {section}{\numberline {2}分工总览}{2}{section.2}%
+\contentsline {section}{\numberline {3}成员具体分工}{3}{section.3}%
+\contentsline {subsection}{\numberline {3.1}陈茹}{3}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}蔡能恩}{3}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}张蕴淇}{3}{subsection.3.3}%
+\contentsline {subsection}{\numberline {3.4}李好}{4}{subsection.3.4}%
+\contentsline {subsection}{\numberline {3.5}王婷}{4}{subsection.3.5}%
+\contentsline {section}{\numberline {4}工作量占比说明}{4}{section.4}%
+\contentsline {section}{\numberline {5}总结}{4}{section.5}%

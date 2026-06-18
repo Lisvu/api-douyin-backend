@@ -1,0 +1,64 @@
+\documentclass[UTF8,a4paper,12pt,fontset=fandol]{ctexart}
+\usepackage{fontspec}
+\setmainfont{Times New Roman}
+\setCJKmainfont[
+    Path=/System/Library/AssetsV2/com_apple_MobileAsset_Font8/88d6cc32a907955efa1d014207889413890573be.asset/AssetData/,
+    UprightFont=*,
+    BoldFont=*,
+    ItalicFont=*,
+    BoldItalicFont=*,
+    FontIndex=0
+]{Kaiti.ttc}
+\usepackage{geometry}
+\usepackage{fancyhdr}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{float}
+\usepackage{hyperref}
+
+\geometry{left=2.2cm, right=2.2cm, top=2.4cm, bottom=2.4cm}
+\linespread{1.2}
+\setlength{\headheight}{15pt}
+\setlength{\parskip}{0.35em}
+\setlength{\parindent}{2em}
+\sloppy
+\emergencystretch=2em
+
+\hypersetup{colorlinks=true, linkcolor=black, urlcolor=blue!55!black, citecolor=black, pdfborder={0 0 0}}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{API 课程期末作业}
+\rhead{内部分数评定表}
+\cfoot{\thepage}
+
+\title{\textbf{项目成员内部分数评定表}}
+\author{API 课程期末作业小组}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{评定结论}
+根据《项目工作进度计划.xlsx》中各成员的计划工作内容，并结合最终项目中实际完成和可演示的功能，组内成员贡献比例评定如下：
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{p{2.4cm} p{3.0cm} X}
+\toprule
+成员 & 贡献比例 & 主要依据 \\
+\midrule
+陈茹 & 21.0\% & 负责数据库、登录鉴权、首页基础、消息通知、AI 文案/分类/封面推荐、聊天、Redis、服务器部署、Nginx 部署和材料汇总。 \\
+蔡能恩 & 20.0\% & 负责推荐排序、观看去重、视频上下切换、推荐流联调，并补充稍后再看、弹幕、下载、多视频视图和分类等播放体验扩展。 \\
+张蕴淇 & 19.5\% & 负责点赞/取消点赞、点赞状态回显、点赞通知分页、评论查询发表、个人主页展示和异常场景说明。 \\
+李好 & 20.0\% & 负责视频上传发布、信息落库、视频访问 URL、我的视频分页、喜欢/收藏、转发、部署联调和批量操作。 \\
+王婷 & 19.5\% & 负责删除权限、请求日志、接口耗时统计、后台监控、关注/粉丝/朋友关系、用户与视频搜索联调。 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{说明}
+以上比例合计为 100\%。评定时不只按功能数量计算，还综合考虑功能是否实际实现、是否进入最终演示流程、实现难度以及联调和文档交付情况。
+
+\end{document}
